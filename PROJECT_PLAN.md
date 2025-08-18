@@ -4,11 +4,12 @@
 An intelligent AI agent capable of placing outbound calls, navigating complex IVR systems autonomously, following adaptive scripts, and logging comprehensive call data.
 
 ## Core Capabilities
-1. **Outbound Call Placement** - Initiate calls to target phone numbers
-2. **IVR Navigation** - Detect and respond to menu options using DTMF tones
-3. **Script Adaptation** - Follow base scripts while adapting to conversation flow
-4. **IVR Mapping** - Document and visualize IVR tree structures
-5. **Data Logging** - Capture call transcripts, decisions, and outcomes
+1. **Web Scraping & Data Collection** - Gather business contact info and context
+2. **Outbound Call Placement** - Initiate calls to target phone numbers
+3. **IVR Navigation** - Detect and respond to menu options using DTMF tones
+4. **Script Adaptation** - Follow base scripts while adapting to conversation flow
+5. **IVR Mapping** - Document and visualize IVR tree structures
+6. **Data Logging** - Capture call transcripts, decisions, and outcomes
 
 ## System Architecture
 

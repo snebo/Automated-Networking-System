@@ -24,6 +24,7 @@
     "@nestjs/event-emitter": "^3.0.1",
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/platform-socket.io": "^10.3.0",
+    "@nestjs/swagger": "^7.4.2",
     "@nestjs/websockets": "^10.3.0",
     "@prisma/client": "^5.8.0",
     "@twilio/voice-sdk": "^2.10.0",

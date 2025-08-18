@@ -5,10 +5,11 @@ import * as Twilio from 'twilio';
 @Injectable()
 export class TwilioService {
   private readonly logger = new Logger(TwilioService.name);
-  private twilioClient: Twilio.Twilio;
+  private twilioClient: Twilio.Twilio | null = null;
   private accountSid: string;
   private authToken: string;
   private phoneNumber: string;
+  private isConfigured: boolean = false;
 
   constructor(private readonly configService: ConfigService) {
     this.accountSid = this.configService.get<string>('telephony.twilio.accountSid') || '';
@@ -16,18 +17,34 @@ export class TwilioService {
     this.phoneNumber = this.configService.get<string>('telephony.twilio.phoneNumber') || '';
     
     if (!this.accountSid || !this.authToken || !this.phoneNumber) {
-      this.logger.warn('Twilio credentials not configured. Some features may not work.');
+      this.logger.warn('Twilio credentials not configured. Running in mock mode.');
+      this.isConfigured = false;
+    } else {
+      try {
+        this.twilioClient = Twilio(this.accountSid, this.authToken);
+        this.isConfigured = true;
+        this.logger.log('Twilio client initialized successfully');
+      } catch (error) {
+        this.logger.error(`Failed to initialize Twilio client: ${error.message}`);
+        this.isConfigured = false;
+      }
     }
-    
-    this.twilioClient = Twilio(this.accountSid, this.authToken);
+  }
+
+  private ensureConfigured(operation: string): void {
+    if (!this.isConfigured || !this.twilioClient) {
+      throw new Error(`Cannot perform ${operation}: Twilio is not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables.`);
+    }
   }
 
   async makeCall(to: string): Promise<any> {
+    this.ensureConfigured('makeCall');
+    
     try {
       const webhookUrl = this.configService.get('telephony.twilio.webhookUrl') || 
                         `${process.env.APP_URL}/telephony/webhook`;
       
-      const call = await this.twilioClient.calls.create({
+      const call = await this.twilioClient!.calls.create({
         to,
         from: this.phoneNumber,
         url: webhookUrl,
@@ -48,8 +65,10 @@ export class TwilioService {
   }
 
   async endCall(callSid: string): Promise<void> {
+    this.ensureConfigured('endCall');
+    
     try {
-      await this.twilioClient.calls(callSid).update({
+      await this.twilioClient!.calls(callSid).update({
         status: 'completed',
       });
       this.logger.log(`Call ended: ${callSid}`);
@@ -60,8 +79,10 @@ export class TwilioService {
   }
 
   async sendDTMF(callSid: string, digits: string): Promise<void> {
+    this.ensureConfigured('sendDTMF');
+    
     try {
-      await this.twilioClient.calls(callSid).update({
+      await this.twilioClient!.calls(callSid).update({
         twiml: `<Response><Play digits="${digits}"/></Response>`,
       });
       this.logger.log(`DTMF sent to ${callSid}: ${digits}`);
@@ -72,8 +93,10 @@ export class TwilioService {
   }
 
   async getCallStatus(callSid: string): Promise<any> {
+    this.ensureConfigured('getCallStatus');
+    
     try {
-      const call = await this.twilioClient.calls(callSid).fetch();
+      const call = await this.twilioClient!.calls(callSid).fetch();
       return call;
     } catch (error) {
       this.logger.error(`Failed to get call status: ${error.message}`, error.stack);
@@ -82,17 +105,23 @@ export class TwilioService {
   }
 
   generateTwiML(text: string): string {
+    // TwiML generation doesn't require active client
     const response = new Twilio.twiml.VoiceResponse();
     response.say({ voice: 'alice' }, text);
     return response.toString();
   }
 
   generateStreamTwiML(streamUrl: string): string {
+    // TwiML generation doesn't require active client
     const response = new Twilio.twiml.VoiceResponse();
     const connect = response.connect();
     connect.stream({
       url: streamUrl,
     });
     return response.toString();
+  }
+
+  isReady(): boolean {
+    return this.isConfigured;
   }
 }

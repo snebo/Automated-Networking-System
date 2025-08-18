@@ -120,3 +120,48 @@ model PhoneNumber {
   
   @@index([number])
 }
+
+model Business {
+  id            String   @id @default(uuid())
+  name          String
+  website       String?  @unique
+  phoneNumber   String?
+  email         String?
+  
+  // Address information
+  addressStreet String?
+  addressCity   String?
+  addressState  String?
+  addressZip    String?
+  addressCountry String?
+  addressFormatted String?
+  
+  // Business details
+  industry      String?
+  description   String?  @db.Text
+  services      String[] // Array of services offered
+  businessHours Json?    // Operating hours
+  
+  // Scraping metadata
+  source        String   // Which source it came from (google, yelp, etc)
+  confidence    Float    @default(0.5)
+  lastScraped   DateTime @default(now())
+  scrapeCount   Int      @default(1)
+  
+  // Call tracking
+  lastCalled    DateTime?
+  callCount     Int      @default(0)
+  callOutcomes  Json?    // History of call outcomes
+  
+  // Additional metadata
+  metadata      Json?    // Any additional data
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([website])
+  @@index([phoneNumber])
+  @@index([industry])
+  @@index([addressState])
+  @@index([lastCalled])
+}

@@ -60,7 +60,7 @@ export class ScraperQueryDto {
     description: 'Data sources to scrape from',
     enum: DataSource,
     enumName: 'DataSource',
-    example: [DataSource.YELLOW_PAGES, DataSource.YELP],
+    example: [DataSource.GOOGLE_SEARCH, DataSource.DUCKDUCKGO],
     required: false,
     type: [String],
   })

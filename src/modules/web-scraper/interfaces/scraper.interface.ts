@@ -8,10 +8,13 @@ export interface ScraperQuery {
 }
 
 export enum DataSource {
+  GOOGLE_SEARCH = 'google_search',
   GOOGLE_MAPS = 'google_maps',
   YELP = 'yelp',
   YELLOW_PAGES = 'yellow_pages',
   CUSTOM_WEBSITE = 'custom_website',
+  BING_SEARCH = 'bing_search',
+  DUCKDUCKGO = 'duckduckgo',
 }
 
 export interface BusinessInfo {

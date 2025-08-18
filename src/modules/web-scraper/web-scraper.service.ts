@@ -31,8 +31,8 @@ export class WebScraperService {
     const errors: string[] = [];
 
     try {
-      // Determine which sources to use
-      const sources = query.sources || [DataSource.GOOGLE_MAPS, DataSource.YELLOW_PAGES];
+      // Determine which sources to use - default to Google Search for better results
+      const sources = query.sources || [DataSource.GOOGLE_SEARCH, DataSource.GOOGLE_MAPS];
 
       for (const source of sources) {
         try {
@@ -67,6 +67,8 @@ export class WebScraperService {
     query: ScraperQuery,
   ): Promise<BusinessInfo[]> {
     switch (source) {
+      case DataSource.GOOGLE_SEARCH:
+        return this.scrapeGoogleSearch(query);
       case DataSource.GOOGLE_MAPS:
         return this.scrapeGoogleMaps(query);
       case DataSource.YELLOW_PAGES:
@@ -75,8 +77,148 @@ export class WebScraperService {
         return this.scrapeYelp(query);
       case DataSource.CUSTOM_WEBSITE:
         return this.scrapeCustomWebsite(query);
+      case DataSource.BING_SEARCH:
+        return this.scrapeBingSearch(query);
+      case DataSource.DUCKDUCKGO:
+        return this.scrapeDuckDuckGo(query);
       default:
         throw new Error(`Unsupported data source: ${source}`);
+    }
+  }
+
+  private async scrapeGoogleSearch(query: ScraperQuery): Promise<BusinessInfo[]> {
+    const businesses: BusinessInfo[] = [];
+    
+    // Build search query
+    const searchTerms = [];
+    if (query.businessType) searchTerms.push(query.businessType);
+    if (query.keywords?.length) searchTerms.push(...query.keywords);
+    if (query.location) searchTerms.push(query.location);
+    
+    const searchQuery = searchTerms.join(' ');
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&num=20`;
+    
+    try {
+      await this.respectRateLimit('google.com');
+      
+      const response = await this.makeHttpRequest(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+        },
+        timeout: 10000,
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Extract organic search results
+      $('.g').each(async (index, element) => {
+        if (businesses.length >= (query.limit || 50)) return;
+        
+        const $elem = $(element);
+        const link = $elem.find('a').first().attr('href');
+        const title = $elem.find('h3').first().text().trim();
+        const snippet = $elem.find('.VwiC3b').text().trim();
+        
+        // Look for phone numbers in snippets
+        const phoneMatch = snippet.match(/(\+?1?[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/);
+        
+        if (title && link) {
+          // Try to extract more info from the website
+          if (link.startsWith('http')) {
+            try {
+              const businessInfo = await this.extractBusinessInfoFromUrl(link, title, snippet);
+              if (businessInfo) {
+                businesses.push(businessInfo);
+              }
+            } catch (err) {
+              // If extraction fails, still add basic info
+              businesses.push({
+                name: title,
+                website: link,
+                description: snippet,
+                phoneNumber: phoneMatch ? this.normalizePhoneNumber(phoneMatch[0]) : undefined,
+                scrapedAt: new Date(),
+                source: DataSource.GOOGLE_SEARCH,
+                confidence: 0.6,
+              });
+            }
+          }
+        }
+      });
+
+      // Also check for Google Maps results in the search page
+      $('.rllt__link').each((index, element) => {
+        if (businesses.length >= (query.limit || 50)) return;
+        
+        const $elem = $(element);
+        const name = $elem.find('.OSrXXb').text().trim();
+        const address = $elem.find('.rllt__details div:first-child').text().trim();
+        const phone = $elem.find('.rllt__details div:contains("·")').text().split('·').pop()?.trim();
+        
+        if (name) {
+          businesses.push({
+            name,
+            phoneNumber: phone ? this.normalizePhoneNumber(phone) : undefined,
+            address: address ? { formatted: address, country: 'USA' } : undefined,
+            scrapedAt: new Date(),
+            source: DataSource.GOOGLE_SEARCH,
+            confidence: 0.8,
+          });
+        }
+      });
+
+      this.logger.log(`Scraped ${businesses.length} businesses from Google Search`);
+    } catch (error) {
+      this.logger.error(`Google Search scraping error: ${error.message}`);
+      
+      // Fallback to DuckDuckGo if Google blocks us
+      if (error.message.includes('403') || error.message.includes('429')) {
+        this.logger.warn('Google blocking detected, falling back to DuckDuckGo');
+        return this.scrapeDuckDuckGo(query);
+      }
+    }
+
+    return businesses;
+  }
+
+  private async extractBusinessInfoFromUrl(url: string, name: string, snippet: string): Promise<BusinessInfo | null> {
+    try {
+      const domain = new URL(url).hostname;
+      await this.respectRateLimit(domain);
+      
+      const response = await this.makeHttpRequest(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        timeout: 5000,
+      });
+
+      const $ = cheerio.load(response.data);
+      const phoneNumber = this.findPhoneNumber($);
+      const email = this.findEmail($);
+      const address = this.findAddress($);
+      const services = this.findServices($, domain);
+      const businessHours = this.findBusinessHours($);
+
+      return {
+        name,
+        phoneNumber: phoneNumber ? this.normalizePhoneNumber(phoneNumber) : undefined,
+        email: email || undefined,
+        address: address ? { formatted: address, country: 'USA' } : undefined,
+        website: url,
+        industry: this.determineIndustry($, domain, name),
+        description: snippet || this.findDescription($) || undefined,
+        services,
+        businessHours,
+        scrapedAt: new Date(),
+        source: DataSource.GOOGLE_SEARCH,
+        confidence: 0.75,
+      };
+    } catch (error) {
+      return null;
     }
   }
 
@@ -319,6 +461,167 @@ export class WebScraperService {
     return businesses;
   }
 
+  private async scrapeDuckDuckGo(query: ScraperQuery): Promise<BusinessInfo[]> {
+    const businesses: BusinessInfo[] = [];
+    const searchResults: Array<{title: string, link: string, snippet: string}> = [];
+    
+    // Build search query
+    const searchTerms = [];
+    if (query.businessType) searchTerms.push(query.businessType);
+    if (query.keywords?.length) searchTerms.push(...query.keywords);
+    if (query.location) searchTerms.push(query.location);
+    
+    const searchQuery = searchTerms.join(' ');
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+    
+    try {
+      await this.respectRateLimit('duckduckgo.com');
+      
+      const response = await this.makeHttpRequest(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+        timeout: 10000,
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Step 1: Extract search results
+      $('.result').each((index, element) => {
+        if (searchResults.length >= (query.limit || 50)) return;
+        
+        const $elem = $(element);
+        let link = $elem.find('.result__url').attr('href');
+        const title = $elem.find('.result__title').text().trim();
+        const snippet = $elem.find('.result__snippet').text().trim();
+        
+        // Fix DuckDuckGo's redirect URLs
+        if (link && link.startsWith('//duckduckgo.com/l/?uddg=')) {
+          const match = link.match(/uddg=([^&]+)/);
+          if (match) {
+            link = decodeURIComponent(match[1]);
+          }
+        }
+        
+        if (title && link && link.startsWith('http')) {
+          searchResults.push({ title, link, snippet });
+        }
+      });
+
+      this.logger.log(`Found ${searchResults.length} search results from DuckDuckGo`);
+
+      // Step 2: Deep scrape each result
+      for (const result of searchResults) {
+        try {
+          this.logger.debug(`Deep scraping: ${result.link}`);
+          
+          // Extract detailed business info from the website
+          const businessInfo = await this.extractBusinessInfoFromUrl(
+            result.link, 
+            result.title, 
+            result.snippet
+          );
+          
+          if (businessInfo) {
+            businesses.push(businessInfo);
+          } else {
+            // If deep scrape fails, still save basic info
+            businesses.push({
+              name: result.title,
+              website: result.link,
+              description: result.snippet,
+              scrapedAt: new Date(),
+              source: DataSource.DUCKDUCKGO,
+              confidence: 0.5,
+            });
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to deep scrape ${result.link}: ${err.message}`);
+          
+          // Add basic info even if deep scrape fails
+          businesses.push({
+            name: result.title,
+            website: result.link,
+            description: result.snippet,
+            scrapedAt: new Date(),
+            source: DataSource.DUCKDUCKGO,
+            confidence: 0.4,
+          });
+        }
+
+        // Add delay between deep scrapes to be respectful
+        if (searchResults.indexOf(result) < searchResults.length - 1) {
+          await this.sleep(1000);
+        }
+      }
+
+      this.logger.log(`Deep scraped ${businesses.length} businesses from DuckDuckGo`);
+    } catch (error) {
+      this.logger.error(`DuckDuckGo scraping error: ${error.message}`);
+    }
+
+    return businesses;
+  }
+
+  private async scrapeBingSearch(query: ScraperQuery): Promise<BusinessInfo[]> {
+    const businesses: BusinessInfo[] = [];
+    
+    // Build search query
+    const searchTerms = [];
+    if (query.businessType) searchTerms.push(query.businessType);
+    if (query.keywords?.length) searchTerms.push(...query.keywords);
+    if (query.location) searchTerms.push(query.location);
+    
+    const searchQuery = searchTerms.join(' ');
+    const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(searchQuery)}&count=20`;
+    
+    try {
+      await this.respectRateLimit('bing.com');
+      
+      const response = await this.makeHttpRequest(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+        timeout: 10000,
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Extract search results from Bing
+      $('.b_algo').each((index, element) => {
+        if (businesses.length >= (query.limit || 50)) return;
+        
+        const $elem = $(element);
+        const link = $elem.find('h2 a').attr('href');
+        const title = $elem.find('h2').text().trim();
+        const snippet = $elem.find('.b_caption p').text().trim();
+        
+        // Look for phone numbers
+        const phoneMatch = snippet.match(/(\+?1?[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/);
+        
+        if (title && link) {
+          businesses.push({
+            name: title,
+            website: link,
+            description: snippet,
+            phoneNumber: phoneMatch ? this.normalizePhoneNumber(phoneMatch[0]) : undefined,
+            scrapedAt: new Date(),
+            source: DataSource.BING_SEARCH,
+            confidence: 0.65,
+          });
+        }
+      });
+
+      this.logger.log(`Scraped ${businesses.length} businesses from Bing`);
+    } catch (error) {
+      this.logger.error(`Bing scraping error: ${error.message}`);
+    }
+
+    return businesses;
+  }
+
   private async scrapeCustomWebsite(query: ScraperQuery): Promise<BusinessInfo[]> {
     const businesses: BusinessInfo[] = [];
     
@@ -529,6 +832,179 @@ export class WebScraperService {
     return emailRegex.test(text.trim());
   }
 
+  private findServices($: any, domain: string): string[] {
+    const services: Set<string> = new Set();
+    
+    // Common selectors for services/departments sections
+    const serviceSelectors = [
+      // Navigation and menu items
+      'nav a',
+      '.services a',
+      '.departments a',
+      '.specialties a',
+      '.medical-services li',
+      '.service-list li',
+      '.our-services li',
+      
+      // For hospital sites specifically
+      '[class*="service"] li',
+      '[class*="department"] li',
+      '[class*="specialty"] li',
+      '[id*="service"] li',
+      '[id*="department"] li',
+      
+      // Headers that indicate services
+      'h3:contains("Services")',
+      'h3:contains("Departments")',
+      'h3:contains("Specialties")',
+      'h3:contains("Centers")',
+    ];
+
+    // Hospital-specific service keywords to look for
+    const medicalKeywords = [
+      'Emergency', 'Surgery', 'Cardiology', 'Oncology', 'Pediatrics',
+      'Maternity', 'ICU', 'Radiology', 'Laboratory', 'Pharmacy',
+      'Rehabilitation', 'Physical Therapy', 'Mental Health', 'Orthopedics',
+      'Neurology', 'Gastroenterology', 'Pulmonology', 'Endocrinology',
+      'Urology', 'Nephrology', 'Dermatology', 'Ophthalmology',
+      'Cancer Center', 'Heart Center', 'Trauma Center', 'Stroke Center',
+      'Women\'s Health', 'Men\'s Health', 'Urgent Care', 'Primary Care',
+      'Imaging', 'MRI', 'CT Scan', 'X-Ray', 'Ultrasound',
+      'Blood Bank', 'Dialysis', 'Chemotherapy', 'Radiation',
+      'Transplant', 'Bariatric', 'Robotics', 'Telemedicine'
+    ];
+
+    // Try to find services from navigation/menus
+    for (const selector of serviceSelectors) {
+      $(selector).each((i: number, elem: any) => {
+        const text = $(elem).text().trim();
+        if (text && text.length > 2 && text.length < 50) {
+          // Check if it contains medical keywords
+          for (const keyword of medicalKeywords) {
+            if (text.toLowerCase().includes(keyword.toLowerCase())) {
+              services.add(text);
+              break;
+            }
+          }
+        }
+      });
+    }
+
+    // Look for services in the page content
+    const bodyText = $('body').text();
+    for (const keyword of medicalKeywords) {
+      const regex = new RegExp(`\\b${keyword}\\s*(Center|Department|Unit|Service|Clinic)?\\b`, 'gi');
+      const matches = bodyText.match(regex);
+      if (matches) {
+        matches.forEach((match: string) => {
+          if (match.length < 50) {
+            services.add(match.trim());
+          }
+        });
+      }
+    }
+
+    // Limit to 20 most relevant services
+    return Array.from(services).slice(0, 20);
+  }
+
+  private findBusinessHours($: any): any {
+    const hours: any = {};
+    
+    // Common selectors for hours
+    const hourSelectors = [
+      '.hours',
+      '.business-hours',
+      '.opening-hours',
+      '.store-hours',
+      '[class*="hour"]',
+      '[id*="hour"]',
+      'table:contains("Monday")',
+      'dl:contains("Monday")',
+    ];
+
+    const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    
+    for (const selector of hourSelectors) {
+      const element = $(selector).first();
+      if (element.length) {
+        const text = element.text();
+        
+        // Try to parse hours for each day
+        for (const day of dayNames) {
+          const dayRegex = new RegExp(`${day}[:\s]+([0-9]{1,2}(?::[0-9]{2})?\\s*(?:am|pm)?)[^0-9]*([0-9]{1,2}(?::[0-9]{2})?\\s*(?:am|pm)?)`, 'i');
+          const match = text.match(dayRegex);
+          
+          if (match) {
+            hours[day] = {
+              open: match[1],
+              close: match[2],
+              isClosed: false
+            };
+          } else if (text.toLowerCase().includes(`${day}.*closed`)) {
+            hours[day] = {
+              open: '',
+              close: '',
+              isClosed: true
+            };
+          }
+        }
+        
+        if (Object.keys(hours).length > 0) {
+          break;
+        }
+      }
+    }
+
+    // Check for 24/7 operations (common for hospitals)
+    if ($('body').text().match(/24[\s\/]*7|24\s*hours|always\s*open/i)) {
+      dayNames.forEach(day => {
+        hours[day] = {
+          open: '00:00',
+          close: '23:59',
+          isClosed: false
+        };
+      });
+      hours.timezone = 'CST'; // Default to CST for Texas
+    }
+
+    return Object.keys(hours).length > 0 ? hours : undefined;
+  }
+
+  private determineIndustry($: any, domain: string, name: string): string {
+    // For hospitals, determine specific type
+    const text = $('body').text().toLowerCase();
+    const nameL = name.toLowerCase();
+    
+    if (nameL.includes('children') || text.includes('pediatric')) {
+      return 'Pediatric Hospital';
+    }
+    if (nameL.includes('cancer') || text.includes('oncology')) {
+      return 'Cancer Treatment Center';
+    }
+    if (nameL.includes('heart') || text.includes('cardiac')) {
+      return 'Cardiac Hospital';
+    }
+    if (nameL.includes('mental') || text.includes('psychiatric')) {
+      return 'Mental Health Facility';
+    }
+    if (nameL.includes('rehabilitation') || nameL.includes('rehab')) {
+      return 'Rehabilitation Hospital';
+    }
+    if (nameL.includes('veteran') || nameL.includes('va ')) {
+      return 'Veterans Hospital';
+    }
+    if (text.includes('academic medical center') || text.includes('teaching hospital')) {
+      return 'Academic Medical Center';
+    }
+    if (text.includes('trauma center')) {
+      return 'Trauma Center';
+    }
+    
+    // Default for medical facilities
+    return 'General Hospital';
+  }
+
   private async respectRateLimit(domain: string): Promise<void> {
     const lastRequest = this.requestDelays.get(domain);
     const now = Date.now();
@@ -634,26 +1110,75 @@ export class WebScraperService {
 
   private async saveBusinessesToDatabase(businesses: BusinessInfo[]): Promise<void> {
     for (const business of businesses) {
-      if (!business.phoneNumber) continue;
-
       try {
-        await this.prisma.phoneNumber.upsert({
-          where: { number: business.phoneNumber },
-          update: {
-            description: business.name,
-            metadata: JSON.parse(JSON.stringify({
-              ...business,
-              lastScraped: new Date(),
-            })),
-            lastCalled: null,
-          },
-          create: {
-            number: business.phoneNumber,
-            description: business.name,
-            metadata: JSON.parse(JSON.stringify(business)),
-            callCount: 0,
+        // Check for duplicates based on website URL (primary identifier)
+        if (business.website) {
+          const existing = await this.prisma.business.findUnique({
+            where: { website: business.website },
+          });
+
+          if (existing) {
+            // Update existing business with new/better information
+            await this.prisma.business.update({
+              where: { website: business.website },
+              data: {
+                name: business.name || existing.name,
+                phoneNumber: business.phoneNumber || existing.phoneNumber,
+                email: business.email || existing.email,
+                addressStreet: business.address?.street || existing.addressStreet,
+                addressCity: business.address?.city || existing.addressCity,
+                addressState: business.address?.state || existing.addressState,
+                addressZip: business.address?.zipCode || existing.addressZip,
+                addressCountry: business.address?.country || existing.addressCountry,
+                addressFormatted: business.address?.formatted || existing.addressFormatted,
+                industry: business.industry || existing.industry,
+                description: business.description || existing.description,
+                services: business.services || existing.services,
+                businessHours: business.businessHours ? JSON.parse(JSON.stringify(business.businessHours)) : existing.businessHours,
+                source: business.source.toString(),
+                confidence: Math.max(business.confidence, existing.confidence),
+                lastScraped: new Date(),
+                scrapeCount: existing.scrapeCount + 1,
+                metadata: {
+                  ...(existing.metadata as any || {}),
+                  ...(business.metadata || {}),
+                  alternatePhones: business.alternatePhones,
+                },
+              },
+            });
+            
+            this.logger.debug(`Updated existing business: ${business.name}`);
+            continue;
+          }
+        }
+
+        // Create new business entry
+        await this.prisma.business.create({
+          data: {
+            name: business.name,
+            website: business.website,
+            phoneNumber: business.phoneNumber,
+            email: business.email,
+            addressStreet: business.address?.street,
+            addressCity: business.address?.city,
+            addressState: business.address?.state,
+            addressZip: business.address?.zipCode,
+            addressCountry: business.address?.country,
+            addressFormatted: business.address?.formatted,
+            industry: business.industry,
+            description: business.description,
+            services: business.services || [],
+            businessHours: business.businessHours ? JSON.parse(JSON.stringify(business.businessHours)) : undefined,
+            source: business.source.toString(),
+            confidence: business.confidence,
+            metadata: {
+              ...business.metadata,
+              alternatePhones: business.alternatePhones,
+            },
           },
         });
+        
+        this.logger.debug(`Saved new business: ${business.name}`);
       } catch (error) {
         this.logger.warn(`Failed to save business ${business.name}: ${error.message}`);
       }
@@ -665,8 +1190,21 @@ export class WebScraperService {
     location?: string;
     notCalledSince?: Date;
   }): Promise<BusinessInfo[]> {
-    const phoneNumbers = await this.prisma.phoneNumber.findMany({
+    const businesses = await this.prisma.business.findMany({
       where: {
+        ...(filters?.industry && {
+          industry: {
+            contains: filters.industry,
+            mode: 'insensitive',
+          },
+        }),
+        ...(filters?.location && {
+          OR: [
+            { addressCity: { contains: filters.location, mode: 'insensitive' } },
+            { addressState: { contains: filters.location, mode: 'insensitive' } },
+            { addressFormatted: { contains: filters.location, mode: 'insensitive' } },
+          ],
+        }),
         ...(filters?.notCalledSince && {
           OR: [
             { lastCalled: null },
@@ -674,14 +1212,32 @@ export class WebScraperService {
           ],
         }),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { lastScraped: 'desc' },
       take: 100,
     });
 
-    return phoneNumbers.map((pn) => ({
-      ...(pn.metadata as any),
-      phoneNumber: pn.number,
-      name: pn.description || 'Unknown',
+    return businesses.map((b) => ({
+      id: b.id,
+      name: b.name,
+      phoneNumber: b.phoneNumber || undefined,
+      email: b.email || undefined,
+      address: b.addressFormatted ? {
+        street: b.addressStreet || undefined,
+        city: b.addressCity || undefined,
+        state: b.addressState || undefined,
+        zipCode: b.addressZip || undefined,
+        country: b.addressCountry || undefined,
+        formatted: b.addressFormatted || undefined,
+      } : undefined,
+      website: b.website || undefined,
+      industry: b.industry || undefined,
+      description: b.description || undefined,
+      services: b.services,
+      businessHours: b.businessHours as any,
+      metadata: b.metadata as any,
+      scrapedAt: b.lastScraped,
+      source: b.source as DataSource,
+      confidence: b.confidence,
     }));
   }
 

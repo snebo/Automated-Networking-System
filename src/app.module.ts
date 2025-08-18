@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bull';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TelephonyModule } from './modules/telephony/telephony.module';
 import { DatabaseModule } from './modules/database/database.module';
+import { WebScraperModule } from './modules/web-scraper/web-scraper.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -21,6 +22,7 @@ import configuration from './config/configuration';
     }),
     DatabaseModule,
     TelephonyModule,
+    WebScraperModule,
     // AiEngineModule,
     // IvrNavigatorModule,
     // CallManagerModule,

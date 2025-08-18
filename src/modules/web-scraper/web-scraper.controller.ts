@@ -83,6 +83,17 @@ export class WebScraperController {
     });
   }
 
+  @Get('test-data')
+  @ApiOperation({ 
+    summary: 'Generate test business data for development',
+    description: 'Returns mock business data for testing filtering functionality'
+  })
+  @ApiQuery({ name: 'industry', required: false, description: 'Filter by industry' })
+  @ApiQuery({ name: 'location', required: false, description: 'Filter by location' })
+  async getTestData(@Query() filters: { industry?: string; location?: string }) {
+    return this.scraperService.generateTestData(filters);
+  }
+
   @Post('enrich')
   @ApiOperation({ 
     summary: 'Enrich business data',

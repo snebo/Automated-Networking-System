@@ -1249,4 +1249,100 @@ export class WebScraperService {
     // Placeholder implementation
     return null;
   }
+
+  async generateTestData(filters?: { industry?: string; location?: string }): Promise<any> {
+    const testBusinesses = [
+      // Restaurants
+      {
+        name: "Mario's Italian Bistro",
+        phoneNumber: "+15551234567",
+        industry: "restaurants",
+        businessType: "Italian Restaurant",
+        address: { formatted: "123 Main St, Los Angeles, CA 90210", city: "Los Angeles", state: "CA" },
+        website: "https://mariositalian.com",
+        services: ["Fine Dining", "Catering", "Wine Bar"],
+        description: "Authentic Italian cuisine with fresh pasta and wine selection"
+      },
+      {
+        name: "Tokyo Sushi Bar",
+        phoneNumber: "+15559876543",
+        industry: "restaurants", 
+        businessType: "Japanese Restaurant",
+        address: { formatted: "456 Oak Ave, Los Angeles, CA 90211", city: "Los Angeles", state: "CA" },
+        website: "https://tokyosushi.com",
+        services: ["Sushi", "Sake Bar", "Takeout"],
+        description: "Fresh sushi and traditional Japanese dishes"
+      },
+      {
+        name: "Burger Palace",
+        phoneNumber: "+15555555555",
+        industry: "restaurants",
+        businessType: "Fast Food Restaurant", 
+        address: { formatted: "789 Pine St, Los Angeles, CA 90212", city: "Los Angeles", state: "CA" },
+        website: "https://burgerpalace.com",
+        services: ["Drive-thru", "Delivery", "Catering"],
+        description: "Gourmet burgers and fries with quick service"
+      },
+      // Hospitals
+      {
+        name: "General Hospital of Los Angeles",
+        phoneNumber: "+15551111111",
+        industry: "healthcare",
+        businessType: "Hospital",
+        address: { formatted: "100 Medical Center Dr, Los Angeles, CA 90213", city: "Los Angeles", state: "CA" },
+        website: "https://lageneralhospital.com",
+        services: ["Emergency Care", "Surgery", "ICU", "Maternity"],
+        description: "Full-service hospital with 24/7 emergency care"
+      },
+      {
+        name: "Children's Medical Center",
+        phoneNumber: "+15552222222", 
+        industry: "healthcare",
+        businessType: "Pediatric Hospital",
+        address: { formatted: "200 Kids Way, Los Angeles, CA 90214", city: "Los Angeles", state: "CA" },
+        website: "https://childrensmedical.com",
+        services: ["Pediatric Emergency", "NICU", "Child Surgery"],
+        description: "Specialized pediatric care and treatment"
+      },
+      // Auto Services
+      {
+        name: "Quick Fix Auto Repair",
+        phoneNumber: "+15553333333",
+        industry: "automotive",
+        businessType: "Auto Repair Shop",
+        address: { formatted: "300 Garage St, Los Angeles, CA 90215", city: "Los Angeles", state: "CA" },
+        website: "https://quickfixauto.com", 
+        services: ["Oil Change", "Brake Repair", "Engine Diagnostics"],
+        description: "Fast and reliable auto repair services"
+      }
+    ];
+
+    // Apply filters
+    let filteredBusinesses = testBusinesses;
+
+    if (filters?.industry) {
+      const industry = filters.industry.toLowerCase();
+      filteredBusinesses = testBusinesses.filter(business => 
+        business.industry.toLowerCase().includes(industry) ||
+        business.businessType.toLowerCase().includes(industry) ||
+        business.services.some(service => service.toLowerCase().includes(industry))
+      );
+    }
+
+    if (filters?.location) {
+      const location = filters.location.toLowerCase();
+      filteredBusinesses = filteredBusinesses.filter(business =>
+        business.address.formatted.toLowerCase().includes(location) ||
+        business.address.city?.toLowerCase().includes(location) ||
+        business.address.state?.toLowerCase().includes(location)
+      );
+    }
+
+    return {
+      businesses: filteredBusinesses,
+      totalFound: filteredBusinesses.length,
+      note: "This is test data for development. Use /scraper/scrape for live scraping.",
+      executionTime: 1
+    };
+  }
 }

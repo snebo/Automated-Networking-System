@@ -81,4 +81,59 @@ export class TelephonyService {
   getAllActiveCalls(): any[] {
     return Array.from(this.activeCalls.values());
   }
+
+  handleDTMFReceived(callSid: string, digits: string): void {
+    try {
+      this.logger.log(`DTMF received for call ${callSid}: ${digits}`);
+      
+      const callData = this.activeCalls.get(callSid);
+      if (callData) {
+        // Add to call transcript
+        if (!callData.transcript) {
+          callData.transcript = [];
+        }
+        
+        callData.transcript.push({
+          timestamp: new Date(),
+          speaker: 'human',
+          text: `[DTMF: ${digits}]`,
+          metadata: { type: 'dtmf', digits }
+        });
+      }
+
+      this.eventEmitter.emit('dtmf.received', {
+        callSid,
+        digits,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.error(`Failed to handle DTMF received: ${error.message}`, error.stack);
+    }
+  }
+
+  updateCallStatus(callSid: string, status: CallStatus, metadata?: any): void {
+    try {
+      const callData = this.activeCalls.get(callSid);
+      if (callData) {
+        const oldStatus = callData.status;
+        callData.status = status;
+        
+        if (metadata) {
+          callData.metadata = { ...callData.metadata, ...metadata };
+        }
+
+        this.eventEmitter.emit('call.status-updated', {
+          callSid,
+          oldStatus,
+          newStatus: status,
+          metadata,
+          timestamp: new Date(),
+        });
+
+        this.logger.log(`Call ${callSid} status updated: ${oldStatus} -> ${status}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to update call status: ${error.message}`, error.stack);
+    }
+  }
 }

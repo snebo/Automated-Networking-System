@@ -117,7 +117,65 @@ export class TwilioService {
     const connect = response.connect();
     connect.stream({
       url: streamUrl,
+      name: 'voice-stream',
     });
+    return response.toString();
+  }
+
+  generateInitialTwiML(): string {
+    // Initial TwiML for new calls - connects to stream and starts recording
+    const response = new Twilio.twiml.VoiceResponse();
+    
+    // Start recording for transcript purposes
+    response.record({
+      action: `${this.configService.get('telephony.twilio.webhookUrl')}/recording`,
+      transcribe: true,
+      transcribeCallback: `${this.configService.get('telephony.twilio.webhookUrl')}/transcription`,
+    });
+    
+    // Connect to WebSocket stream for real-time processing
+    const streamUrl = this.configService.get('telephony.twilio.streamUrl') || 
+                     `wss://${process.env.HOST || 'localhost'}/call-events`;
+    
+    const connect = response.connect();
+    connect.stream({
+      url: streamUrl,
+      name: 'ai-voice-stream',
+    });
+    
+    return response.toString();
+  }
+
+  generateGatherTwiML(prompt: string, numDigits?: number, timeout?: number): string {
+    const response = new Twilio.twiml.VoiceResponse();
+    
+    const gather = response.gather({
+      numDigits: numDigits || 1,
+      timeout: timeout || 5,
+      action: `${this.configService.get('telephony.twilio.webhookUrl')}/gather`,
+    });
+    
+    gather.say({ voice: 'alice' }, prompt);
+    
+    // Fallback if no input received
+    response.say({ voice: 'alice' }, 'I did not receive any input. Goodbye.');
+    response.hangup();
+    
+    return response.toString();
+  }
+
+  generatePlayTwiML(audioUrl: string): string {
+    const response = new Twilio.twiml.VoiceResponse();
+    response.play(audioUrl);
+    return response.toString();
+  }
+
+  generateHangupTwiML(message?: string): string {
+    const response = new Twilio.twiml.VoiceResponse();
+    if (message) {
+      response.say({ voice: 'alice' }, message);
+    }
+    response.hangup();
     return response.toString();
   }
 

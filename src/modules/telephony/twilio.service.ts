@@ -11,9 +11,13 @@ export class TwilioService {
   private phoneNumber: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.accountSid = this.configService.get('telephony.twilio.accountSid');
-    this.authToken = this.configService.get('telephony.twilio.authToken');
-    this.phoneNumber = this.configService.get('telephony.twilio.phoneNumber');
+    this.accountSid = this.configService.get<string>('telephony.twilio.accountSid') || '';
+    this.authToken = this.configService.get<string>('telephony.twilio.authToken') || '';
+    this.phoneNumber = this.configService.get<string>('telephony.twilio.phoneNumber') || '';
+    
+    if (!this.accountSid || !this.authToken || !this.phoneNumber) {
+      this.logger.warn('Twilio credentials not configured. Some features may not work.');
+    }
     
     this.twilioClient = Twilio(this.accountSid, this.authToken);
   }

@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CallSession {
+  id          String   @id @default(uuid())
+  callSid     String   @unique
+  phoneNumber String
+  scriptId    String
+  status      String
+  startTime   DateTime @default(now())
+  endTime     DateTime?
+  duration    Int?
+  recordingUrl String?
+  outcome     Json?
+  metadata    Json?
+  
+  transcript  Transcript[]
+  ivrMap      IvrMap[]
+  events      CallEvent[]
+  
+  script      Script   @relation(fields: [scriptId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([phoneNumber])
+  @@index([status])
+  @@index([startTime])
+}
+
+model Transcript {
+  id          String   @id @default(uuid())
+  callId      String
+  timestamp   DateTime
+  speaker     String   // 'agent', 'human', 'ivr'
+  text        String
+  confidence  Float?
+  metadata    Json?
+  
+  call        CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([callId])
+  @@index([timestamp])
+}
+
+model IvrMap {
+  id          String   @id @default(uuid())
+  callId      String
+  nodeId      String
+  prompt      String
+  options     Json     // Array of options
+  selectedOption String?
+  timestamp   DateTime
+  parentId    String?
+  metadata    Json?
+  
+  call        CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  parent      IvrMap?  @relation("IvrMapHierarchy", fields: [parentId], references: [id])
+  children    IvrMap[] @relation("IvrMapHierarchy")
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([callId])
+  @@index([parentId])
+}
+
+model Script {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  goal        String
+  context     String
+  phases      Json     // Array of script phases
+  adaptationRules Json // Array of adaptation rules
+  isActive    Boolean  @default(true)
+  
+  calls       CallSession[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([isActive])
+}
+
+model CallEvent {
+  id          String   @id @default(uuid())
+  callId      String
+  eventType   String   // 'dtmf_sent', 'ivr_detected', 'decision_made', etc.
+  eventData   Json
+  timestamp   DateTime
+  
+  call        CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([callId])
+  @@index([eventType])
+  @@index([timestamp])
+}
+
+model PhoneNumber {
+  id          String   @id @default(uuid())
+  number      String   @unique
+  description String?
+  ivrMapCache Json?    // Cached IVR structure for this number
+  lastCalled  DateTime?
+  callCount   Int      @default(0)
+  metadata    Json?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([number])
+}

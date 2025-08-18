@@ -1,0 +1,14 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { TelephonyService } from './telephony.service';
+import { TelephonyController } from './telephony.controller';
+import { TwilioService } from './twilio.service';
+import { CallWebSocketGateway } from './call-websocket.gateway';
+
+@Module({
+  imports: [ConfigModule],
+  controllers: [TelephonyController],
+  providers: [TelephonyService, TwilioService, CallWebSocketGateway],
+  exports: [TelephonyService, TwilioService],
+})
+export class TelephonyModule {}

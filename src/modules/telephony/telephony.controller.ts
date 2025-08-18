@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Header,
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -27,6 +28,8 @@ export class TelephonyController {
   private readonly logger = new Logger(TelephonyController.name);
 
   constructor(private readonly telephonyService: TelephonyService) {}
+
+  // ===== PHASE 1: BASIC CALL MANAGEMENT API (CURRENTLY ACTIVE) =====
 
   @Post('call')
   @ApiOperation({ summary: 'Initiate an outbound call' })
@@ -100,35 +103,36 @@ export class TelephonyController {
     return this.telephonyService.getActiveCall(callSid);
   }
 
+  // ===== PHASE 2: WEBHOOK HANDLERS (FOR FUTURE USE WITH REAL-TIME AUDIO) =====
+
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
+  @Header('Content-Type', 'application/xml')
   @ApiExcludeEndpoint()
   async handleWebhook(@Body() body: any) {
-    this.logger.log('Received Twilio webhook:', body);
+    // NOTE: Currently not used - Phase 1 uses inline TwiML
+    // This will be activated in Phase 2 for real-time audio streaming and IVR navigation
+    this.logger.log('Main webhook called (Phase 2 feature):', JSON.stringify(body));
     
-    const { CallSid, CallStatus, Direction } = body;
+    const { CallSid, CallStatus, Direction, From, To } = body;
+    this.logger.log(`Call ${CallSid}: Status=${CallStatus}, Direction=${Direction}, From=${From}, To=${To}`);
     
-    if (CallStatus === 'in-progress' && Direction === 'outbound') {
-      // Call was answered, return initial TwiML
-      const twimlResponse = `
-        <Response>
-          <Record action="/telephony/webhook/recording" transcribe="true" />
-          <Connect>
-            <Stream url="wss://${process.env.HOST || 'localhost'}/call-events" name="ai-stream" />
-          </Connect>
-        </Response>
-      `;
-      return twimlResponse;
-    }
+    // Placeholder TwiML for Phase 2 implementation
+    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Phase 2 webhook handler activated.</Say>
+</Response>`;
     
-    // Default response
-    return '<Response></Response>';
+    return twimlResponse;
   }
+  
 
   @Post('webhook/status')
   @HttpCode(HttpStatus.OK)
+  @Header('Content-Type', 'application/json')
   @ApiExcludeEndpoint()
   async handleStatusCallback(@Body() body: any) {
+    // Currently active - receives call status updates for monitoring
     this.logger.log('Call status update:', body);
     
     const { CallSid, CallStatus, Duration } = body;

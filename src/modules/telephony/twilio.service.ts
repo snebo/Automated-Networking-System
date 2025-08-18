@@ -37,24 +37,41 @@ export class TwilioService {
     }
   }
 
+  // ===== PHASE 1: BASIC CALL METHODS (CURRENTLY ACTIVE) =====
+  
   async makeCall(to: string): Promise<any> {
     this.ensureConfigured('makeCall');
     
     try {
-      const webhookUrl = this.configService.get('telephony.twilio.webhookUrl') || 
-                        `${process.env.APP_URL}/telephony/webhook`;
+      const baseUrl = this.configService.get('app.url') || process.env.APP_URL || 'http://localhost:3000';
       
-      const call = await this.twilioClient!.calls.create({
+      this.logger.log(`Making call to ${to} from ${this.phoneNumber}`);
+      
+      // Phase 1: Using inline TwiML with natural voice
+      const twimlContent = `<Response>
+        <Say voice="Polly.Joanna">Congratulations! Your IVR Navigation Agent is now fully operational.</Say>
+        <Pause length="2"/>
+        <Say voice="Polly.Joanna">Phase 1 Basic Telephony Infrastructure is complete!</Say>
+        <Pause length="2"/>
+        <Say voice="Polly.Joanna">Ready for Phase 2 Speech Processing implementation.</Say>
+        <Pause length="2"/>
+        <Gather numDigits="1" timeout="10">
+          <Say voice="Polly.Joanna">Press any key to end this call, or wait 10 seconds.</Say>
+        </Gather>
+        <Say voice="Polly.Joanna">Thank you for testing! Goodbye.</Say>
+        <Hangup/>
+      </Response>`;
+      
+      const callParams = {
         to,
         from: this.phoneNumber,
-        url: webhookUrl,
-        statusCallback: `${webhookUrl}/status`,
+        twiml: twimlContent, // Inline TwiML (no webhook dependency)
+        machineDetection: 'Disable', // Prevents silent calls on trial accounts
+        statusCallback: `${baseUrl}/telephony/webhook/status`,
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-        record: true,
-        recordingStatusCallback: `${webhookUrl}/recording`,
-        machineDetection: 'Enable',
-        machineDetectionTimeout: 5000,
-      });
+      };
+      
+      const call = await this.twilioClient!.calls.create(callParams);
 
       this.logger.log(`Call initiated: ${call.sid}`);
       return call;
@@ -104,15 +121,15 @@ export class TwilioService {
     }
   }
 
+  // ===== PHASE 2: TWIML GENERATION METHODS (FOR FUTURE USE) =====
+
   generateTwiML(text: string): string {
-    // TwiML generation doesn't require active client
     const response = new Twilio.twiml.VoiceResponse();
-    response.say({ voice: 'alice' }, text);
+    response.say({ voice: 'Polly.Joanna' }, text);
     return response.toString();
   }
 
   generateStreamTwiML(streamUrl: string): string {
-    // TwiML generation doesn't require active client
     const response = new Twilio.twiml.VoiceResponse();
     const connect = response.connect();
     connect.stream({

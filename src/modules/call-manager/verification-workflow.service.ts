@@ -3,6 +3,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../database/prisma.service';
 import { TelephonyService } from '../telephony/telephony.service';
 import { ScriptManagerService } from '../script-manager/script-manager.service';
+import { InformationExtractionService } from '../information-extraction/information-extraction.service';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 
@@ -60,6 +61,7 @@ export class VerificationWorkflowService {
     private readonly prisma: PrismaService,
     private readonly telephonyService: TelephonyService,
     private readonly scriptManager: ScriptManagerService,
+    private readonly informationExtraction: InformationExtractionService,
     private readonly eventEmitter: EventEmitter2,
     @InjectQueue('verification-queue') private verificationQueue: Queue,
   ) {}
@@ -276,7 +278,25 @@ export class VerificationWorkflowService {
     const workflow = this.activeWorkflows.get(businessId);
     if (!workflow) return;
 
-    // Analyze information gathering result
+    // Extract structured information from call transcript if available
+    let extractedInfo = null;
+    if (outcome?.transcript && workflow.informationCallSid) {
+      try {
+        const request = this.getOriginalRequest(businessId);
+        extractedInfo = await this.informationExtraction.extractAndStoreInformation(
+          workflow.informationCallSid,
+          businessId,
+          outcome.transcript,
+          request?.targetPerson,
+          request?.specificGoal
+        );
+        this.logger.log(`AI-extracted information stored for business ${businessId}`);
+      } catch (error) {
+        this.logger.error(`Failed to extract information for business ${businessId}: ${error.message}`);
+      }
+    }
+
+    // Analyze information gathering result (fallback if AI extraction fails)
     const informationResult = this.analyzeInformationOutcome(outcome);
     workflow.informationResult = informationResult;
     workflow.status = 'completed';
@@ -290,18 +310,20 @@ export class VerificationWorkflowService {
         metadata: {
           ...workflow.verificationResult ? { verificationResult: workflow.verificationResult } : {},
           informationResult,
-          workflowCompletedAt: new Date()
+          workflowCompletedAt: new Date(),
+          ...(extractedInfo ? { aiExtractedInfo: true } : {})
         } as any
       }
     });
 
     this.logger.log(`Workflow completed for business ${businessId}`);
 
-    // Emit completion event
+    // Emit completion event with extracted information
     this.eventEmitter.emit('workflow.completed', {
       businessId,
       workflow,
-      informationResult
+      informationResult,
+      extractedInfo
     });
   }
 

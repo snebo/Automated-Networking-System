@@ -8,6 +8,7 @@ import { WebScraperModule } from './modules/web-scraper/web-scraper.module';
 import { CallManagerModule } from './modules/call-manager/call-manager.module';
 import { SpeechProcessorModule } from './modules/speech-processor/speech-processor.module';
 import { AiEngineModule } from './modules/ai-engine/ai-engine.module';
+import { InformationExtractionModule } from './modules/information-extraction/information-extraction.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -33,6 +34,7 @@ import configuration from './config/configuration';
     CallManagerModule,
     SpeechProcessorModule,
     AiEngineModule,
+    InformationExtractionModule,
     // IvrNavigatorModule,
     // ScriptManagerModule,
   ],

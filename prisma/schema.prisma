@@ -23,6 +23,7 @@ model CallSession {
   transcript  Transcript[]
   ivrMap      IvrMap[]
   events      CallEvent[]
+  extractedInformation ExtractedInformation[]
   
   script      Script   @relation(fields: [scriptId], references: [id])
   
@@ -163,6 +164,7 @@ model Business {
   metadata      Json?    // Any additional data
   
   assignedScript Script? @relation(fields: [assignedScriptId], references: [id])
+  extractedInformation ExtractedInformation[]
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -174,4 +176,79 @@ model Business {
   @@index([lastCalled])
   @@index([assignedScriptId])
   @@index([callStatus])
+}
+
+model ExtractedInformation {
+  id                    String   @id @default(uuid())
+  businessId            String
+  callId                String
+  
+  // Basic extraction info
+  extractedAt           DateTime @default(now())
+  extractionConfidence  Float
+  rawTranscript         String   @db.Text
+  
+  // Contact information
+  contactInfo           Json     // ContactInformation interface
+  
+  // Operational information  
+  operationalInfo       Json     // OperationalInformation interface
+  
+  // Call outcome
+  callOutcome           Json     // CallOutcome interface
+  
+  // Extraction metadata
+  metadata              Json     // ExtractionMetadata interface
+  
+  // Quick search fields (denormalized for performance)
+  targetPersonFound     Boolean  @default(false)
+  targetPersonName      String?
+  targetPersonPhone     String?
+  targetPersonEmail     String?
+  mainContactPhone      String?
+  mainContactEmail      String?
+  
+  // Success indicators
+  goalAchieved          Boolean  @default(false)
+  informationQuality    String   @default("low") // low, medium, high
+  followUpRequired      Boolean  @default(false)
+  
+  business              Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  call                  CallSession @relation(fields: [callId], references: [id], onDelete: Cascade)
+  entities              InformationEntity[]
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([businessId])
+  @@index([callId])
+  @@index([targetPersonFound])
+  @@index([goalAchieved])
+  @@index([informationQuality])
+  @@index([extractedAt])
+}
+
+model InformationEntity {
+  id            String   @id @default(uuid())
+  extractionId  String
+  
+  // Entity details
+  entityType    String   // 'person', 'phone', 'email', 'department', 'time', 'location'
+  entityValue   String
+  entityContext String?  // Where in the conversation this was mentioned
+  confidence    Float    @default(0.5)
+  
+  // Entity metadata
+  verified      Boolean  @default(false)
+  category      String?  // 'primary_contact', 'alternative', 'department_head', etc.
+  relationship  String?  // How this entity relates to others
+  
+  extraction    ExtractedInformation @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([extractionId])
+  @@index([entityType])
+  @@index([entityValue])
+  @@index([verified])
 }

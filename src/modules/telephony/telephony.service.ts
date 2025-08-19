@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TwilioService } from './twilio.service';
 import { CallStatus } from '../../common/interfaces/call.interface';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 
 @Injectable()
 export class TelephonyService {
@@ -146,6 +146,61 @@ export class TelephonyService {
       transcript: text,
       confidence: 0.95, // Twilio transcriptions are generally accurate
       timestamp: new Date(),
+    });
+  }
+
+  // ===== AI ENGINE EVENT HANDLERS =====
+
+  @OnEvent('ai.send_dtmf')
+  async handleAISendDTMF(event: { callSid: string; digits: string; reasoning: string }) {
+    this.logger.log(`\n🤖 AI requesting DTMF: ${event.digits} for call ${event.callSid}`);
+    this.logger.log(`   Reasoning: ${event.reasoning}`);
+    
+    await this.sendDTMF(event.callSid, event.digits);
+  }
+
+  @OnEvent('ai.speak')
+  async handleAISpeak(event: { callSid: string; text: string; action: string }) {
+    this.logger.log(`\n🎤 AI requesting TTS: "${event.text}" for call ${event.callSid}`);
+    this.logger.log(`   Action context: ${event.action}`);
+    
+    // Emit to TTS service
+    this.eventEmitter.emit('tts.generate', {
+      callSid: event.callSid,
+      text: event.text,
+      priority: 'high',
+      context: event.action,
+    });
+  }
+
+  @OnEvent('ai.hangup')
+  async handleAIHangup(event: { callSid: string; reason: string }) {
+    this.logger.log(`\n📞 AI requesting hangup for call ${event.callSid}`);
+    this.logger.log(`   Reason: ${event.reason}`);
+    
+    await this.endCall(event.callSid);
+  }
+
+  @OnEvent('call.answered')
+  handleCallAnswered(event: { callSid: string; phoneNumber: string }) {
+    this.logger.log(`\n📞 Call answered: ${event.callSid} to ${event.phoneNumber}`);
+    
+    // Start AI decision session with a default goal
+    this.eventEmitter.emit('ai.start_session', {
+      callSid: event.callSid,
+      phoneNumber: event.phoneNumber,
+      goal: 'Navigate to customer support',
+      companyName: 'Unknown Company'
+    });
+  }
+
+  @OnEvent('call.ended')
+  handleCallEnded(event: { callSid: string }) {
+    this.logger.log(`\n📞 Call ended: ${event.callSid}`);
+    
+    // Notify AI Engine to clean up session
+    this.eventEmitter.emit('ai.session_ended', {
+      callSid: event.callSid,
     });
   }
 }

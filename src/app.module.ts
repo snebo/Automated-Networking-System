@@ -7,6 +7,7 @@ import { DatabaseModule } from './modules/database/database.module';
 import { WebScraperModule } from './modules/web-scraper/web-scraper.module';
 import { CallManagerModule } from './modules/call-manager/call-manager.module';
 import { SpeechProcessorModule } from './modules/speech-processor/speech-processor.module';
+import { AiEngineModule } from './modules/ai-engine/ai-engine.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -31,7 +32,7 @@ import configuration from './config/configuration';
     WebScraperModule,
     CallManagerModule,
     SpeechProcessorModule,
-    // AiEngineModule,
+    AiEngineModule,
     // IvrNavigatorModule,
     // ScriptManagerModule,
   ],

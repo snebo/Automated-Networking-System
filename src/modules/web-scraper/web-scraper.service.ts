@@ -1,7 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
+import { TelephonyService } from '../telephony/telephony.service';
+import { ScriptManagerService } from '../script-manager/script-manager.service';
 import * as cheerio from 'cheerio';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -10,7 +13,9 @@ import {
   ScrapeResult,
   DataSource,
   Address,
+  ContentType,
 } from './interfaces/scraper.interface';
+import { BulkCallDto, BusinessWithScript } from './dto/business-script.dto';
 
 @Injectable()
 export class WebScraperService {
@@ -23,6 +28,8 @@ export class WebScraperService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly telephonyService: TelephonyService,
+    private readonly scriptManager: ScriptManagerService,
   ) {}
 
   async scrapeBusinesses(query: ScraperQuery): Promise<ScrapeResult> {
@@ -44,11 +51,14 @@ export class WebScraperService {
         }
       }
 
+      // Apply enhanced filtering
+      const filteredBusinesses = this.applyEnhancedFiltering(businesses, query);
+
       // Save to database
-      await this.saveBusinessesToDatabase(businesses);
+      await this.saveBusinessesToDatabase(filteredBusinesses);
 
       // Deduplicate by phone number
-      const uniqueBusinesses = this.deduplicateBusinesses(businesses);
+      const uniqueBusinesses = this.deduplicateBusinesses(filteredBusinesses);
 
       return {
         businesses: uniqueBusinesses.slice(0, query.limit || 50),
@@ -1096,6 +1106,212 @@ export class WebScraperService {
     return phone;
   }
 
+  // Enhanced filtering methods
+  private applyEnhancedFiltering(businesses: BusinessInfo[], query: ScraperQuery): BusinessInfo[] {
+    this.logger.log(`Applying enhanced filtering to ${businesses.length} businesses`);
+    
+    let filtered = businesses;
+
+    // Filter out unwanted content types
+    if (query.onlyBusinessListings || query.excludeContentTypes?.length) {
+      filtered = filtered.filter(business => this.isValidBusinessListing(business, query));
+    }
+
+    // Require phone number
+    if (query.hasPhone !== false) { // Default to requiring phone
+      filtered = filtered.filter(business => business.phoneNumber);
+    }
+
+    // Require website
+    if (query.hasWebsite) {
+      filtered = filtered.filter(business => business.website);
+    }
+
+    // Require physical location
+    if (query.requirePhysicalLocation) {
+      filtered = filtered.filter(business => 
+        business.address && 
+        (business.address.street || business.address.formatted)
+      );
+    }
+
+    // Minimum rating filter
+    if (query.minRating) {
+      filtered = filtered.filter(business => 
+        !business.metadata?.rating || business.metadata.rating >= query.minRating!
+      );
+    }
+
+    // Business size filter (if we have this data)
+    if (query.businessSize) {
+      filtered = filtered.filter(business => 
+        this.matchesBusinessSize(business, query.businessSize!)
+      );
+    }
+
+    // Established since filter
+    if (query.establishedSince) {
+      filtered = filtered.filter(business => 
+        !business.metadata?.establishedYear || 
+        business.metadata.establishedYear >= query.establishedSince!
+      );
+    }
+
+    this.logger.log(`Filtered ${businesses.length} businesses down to ${filtered.length}`);
+    return filtered;
+  }
+
+  private isValidBusinessListing(business: BusinessInfo, query: ScraperQuery): boolean {
+    const name = business.name.toLowerCase();
+    const description = business.description?.toLowerCase() || '';
+    const website = business.website?.toLowerCase() || '';
+
+    // Check for blog article patterns
+    const blogPatterns = [
+      /top\s+\d+/,
+      /best\s+\d+/,
+      /\d+\s+best/,
+      /ultimate\s+guide/,
+      /complete\s+guide/,
+      /how\s+to\s+choose/,
+      /everything\s+you\s+need\s+to\s+know/,
+      /review\s*:/,
+      /\d+\s+tips/,
+      /guide\s+to/,
+      /^the\s+complete/,
+      /^a\s+comprehensive/
+    ];
+
+    // Check for news article patterns  
+    const newsPatterns = [
+      /breaking\s*:/,
+      /news\s+update/,
+      /just\s+in\s*:/,
+      /reported\s+today/,
+      /according\s+to\s+sources/,
+      /exclusive\s*:/
+    ];
+
+    // Check for social media patterns
+    const socialPatterns = [
+      /facebook\.com/,
+      /twitter\.com/,
+      /instagram\.com/,
+      /linkedin\.com\/in/,
+      /tiktok\.com/,
+      /youtube\.com\/watch/
+    ];
+
+    // Check for directory listing patterns
+    const directoryPatterns = [
+      /yellow\s*pages/,
+      /white\s*pages/,
+      /business\s+directory/,
+      /find\s+.*\s+near\s+you/,
+      /local\s+directory/,
+      /listings?\s+for/
+    ];
+
+    // Exclude specific unwanted content
+    const excludeTypes = query.excludeContentTypes || [];
+    if (query.onlyBusinessListings) {
+      excludeTypes.push(
+        ContentType.BLOG_ARTICLES,
+        ContentType.NEWS_ARTICLES,
+        ContentType.TOP_LISTS,
+        ContentType.GENERIC_INFO
+      );
+    }
+
+    for (const contentType of excludeTypes) {
+      switch (contentType) {
+        case ContentType.BLOG_ARTICLES:
+          if (blogPatterns.some(pattern => pattern.test(name) || pattern.test(description))) {
+            return false;
+          }
+          break;
+        case ContentType.NEWS_ARTICLES:
+          if (newsPatterns.some(pattern => pattern.test(name) || pattern.test(description))) {
+            return false;
+          }
+          break;
+        case ContentType.SOCIAL_MEDIA:
+          if (socialPatterns.some(pattern => pattern.test(website))) {
+            return false;
+          }
+          break;
+        case ContentType.DIRECTORIES:
+          if (directoryPatterns.some(pattern => pattern.test(name) || pattern.test(description))) {
+            return false;
+          }
+          break;
+        case ContentType.TOP_LISTS:
+          if (/top\s+\d+|best\s+\d+|\d+\s+best/i.test(name)) {
+            return false;
+          }
+          break;
+        case ContentType.REVIEWS_ONLY:
+          if (/review\s*:|reviews?\s+of|rating\s+of/i.test(name)) {
+            return false;
+          }
+          break;
+      }
+    }
+
+    // Additional business validation
+    return this.isLikelyBusiness(business);
+  }
+
+  private isLikelyBusiness(business: BusinessInfo): boolean {
+    const name = business.name.toLowerCase();
+    
+    // Must have essential business characteristics
+    const hasPhone = !!business.phoneNumber;
+    const hasLocation = !!(business.address?.street || business.address?.formatted);
+    const hasWebsite = !!business.website;
+    
+    // At least 2 of these should be true for a real business
+    const businessScore = [hasPhone, hasLocation, hasWebsite].filter(Boolean).length;
+    
+    // Exclude obviously non-business names
+    const nonBusinessPatterns = [
+      /^how\s+to\s/,
+      /^what\s+is\s/,
+      /^why\s+you\s/,
+      /^the\s+ultimate\s+guide/,
+      /^everything\s+about/,
+      /^\d+\s+reasons/,
+      /article/,
+      /^tips\s+for/,
+      /wikipedia/
+    ];
+
+    if (nonBusinessPatterns.some(pattern => pattern.test(name))) {
+      return false;
+    }
+
+    return businessScore >= 1; // At least one essential characteristic
+  }
+
+  private matchesBusinessSize(business: BusinessInfo, targetSize: string): boolean {
+    // This would typically be based on employee count, revenue, etc.
+    // For now, use heuristics based on available data
+    const name = business.name.toLowerCase();
+    
+    switch (targetSize) {
+      case 'small':
+        return !/(corporation|corp\.|inc\.|llc|ltd\.|international|global|nationwide)/i.test(name);
+      case 'medium':
+        return /(llc|inc\.|corp\.)/i.test(name) && !/(international|global|nationwide)/i.test(name);
+      case 'large':
+        return /(corporation|international|global|nationwide)/i.test(name);
+      case 'enterprise':
+        return /(fortune|global|international|nationwide|enterprise)/i.test(name);
+      default:
+        return true;
+    }
+  }
+
   private deduplicateBusinesses(businesses: BusinessInfo[]): BusinessInfo[] {
     const seen = new Set<string>();
     return businesses.filter((business) => {
@@ -1174,7 +1390,7 @@ export class WebScraperService {
             metadata: {
               ...business.metadata,
               alternatePhones: business.alternatePhones,
-            },
+            } as any,
           },
         });
         
@@ -1343,6 +1559,374 @@ export class WebScraperService {
       totalFound: filteredBusinesses.length,
       note: "This is test data for development. Use /scraper/scrape for live scraping.",
       executionTime: 1
+    };
+  }
+
+  // ===== BUSINESS MANAGEMENT METHODS =====
+
+  async getBusinessesWithScripts(filters?: {
+    status?: string;
+    hasScript?: boolean;
+    hasPhone?: boolean;
+  }): Promise<BusinessWithScript[]> {
+    const businesses = await this.prisma.business.findMany({
+      where: {
+        ...(filters?.status && { callStatus: filters.status }),
+        ...(filters?.hasScript !== undefined && {
+          assignedScriptId: filters.hasScript ? { not: null } : null
+        }),
+        ...(filters?.hasPhone !== undefined && {
+          phoneNumber: filters.hasPhone ? { not: null } : null
+        }),
+      },
+      include: {
+        assignedScript: {
+          select: {
+            id: true,
+            name: true,
+            goal: true,
+            description: true,
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return businesses.map(business => ({
+      id: business.id,
+      name: business.name,
+      phoneNumber: business.phoneNumber,
+      email: business.email,
+      industry: business.industry,
+      callStatus: business.callStatus,
+      callCount: business.callCount,
+      lastCalled: business.lastCalled,
+      assignedScript: business.assignedScript,
+      customGoal: business.customGoal,
+    }));
+  }
+
+  async assignScriptToBusiness(
+    businessId: string,
+    scriptId: string,
+    customGoal?: string
+  ): Promise<any> {
+    // Check if business exists
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId }
+    });
+
+    if (!business) {
+      throw new Error('Business not found');
+    }
+
+    // Check if script exists
+    const script = await this.prisma.script.findUnique({
+      where: { id: scriptId }
+    });
+
+    if (!script) {
+      throw new Error('Script not found');
+    }
+
+    // Update business with script assignment
+    const updatedBusiness = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        assignedScriptId: scriptId,
+        customGoal: customGoal || null,
+        callStatus: 'pending',
+      },
+      include: {
+        assignedScript: {
+          select: {
+            id: true,
+            name: true,
+            goal: true,
+            description: true,
+          }
+        }
+      }
+    });
+
+    this.logger.log(`Assigned script ${script.name} to business ${business.name}`);
+
+    return {
+      business: {
+        id: updatedBusiness.id,
+        name: updatedBusiness.name,
+        phoneNumber: updatedBusiness.phoneNumber,
+        assignedScript: updatedBusiness.assignedScript,
+        customGoal: updatedBusiness.customGoal,
+      },
+      message: 'Script assigned successfully'
+    };
+  }
+
+  async executeBulkCalls(bulkCallDto: BulkCallDto): Promise<any> {
+    const { businessIds, overrideScriptId, overrideGoal, concurrent = false } = bulkCallDto;
+
+    this.logger.log(`Starting bulk call operation for ${businessIds.length} businesses`);
+    this.logger.log(`Concurrent: ${concurrent}`);
+
+    const results = {
+      totalBusinesses: businessIds.length,
+      validBusinesses: 0,
+      callsInitiated: 0,
+      errors: [] as Array<{ businessId: string; error: string }>,
+      callResults: [] as Array<{ businessId: string; callSid: string; status: string }>,
+    };
+
+    // Get businesses with their script assignments
+    const businesses = await this.prisma.business.findMany({
+      where: {
+        id: { in: businessIds }
+      },
+      include: {
+        assignedScript: true
+      }
+    });
+
+    if (businesses.length === 0) {
+      throw new Error('No valid businesses found');
+    }
+
+    results.validBusinesses = businesses.length;
+
+    // Function to make a single call
+    const makeCall = async (business: any) => {
+      try {
+        // Determine which script and goal to use
+        let scriptId = overrideScriptId || business.assignedScriptId;
+        let goal = overrideGoal || business.customGoal || business.assignedScript?.goal;
+
+        if (!business.phoneNumber) {
+          throw new Error('Business has no phone number');
+        }
+
+        if (!scriptId) {
+          throw new Error('No script assigned and no override script provided');
+        }
+
+        if (!goal) {
+          throw new Error('No goal available from script or custom goal');
+        }
+
+        // Update business status to 'calling'
+        await this.prisma.business.update({
+          where: { id: business.id },
+          data: { callStatus: 'calling' }
+        });
+
+        // Make the call using injected TelephonyService
+
+        // Make the call
+        const callSid = await this.telephonyService.initiateCall(
+          business.phoneNumber,
+          scriptId,
+          goal,
+          business.name
+        );
+
+        // Update business with call info
+        await this.prisma.business.update({
+          where: { id: business.id },
+          data: {
+            callCount: business.callCount + 1,
+            lastCalled: new Date(),
+            callStatus: 'active',
+          }
+        });
+
+        results.callsInitiated++;
+        results.callResults.push({
+          businessId: business.id,
+          callSid: callSid,
+          status: 'initiated'
+        });
+
+        this.logger.log(`Call initiated for ${business.name}: ${callSid}`);
+
+        return { businessId: business.id, callSid, status: 'success' };
+
+      } catch (error) {
+        // Update business status to failed
+        await this.prisma.business.update({
+          where: { id: business.id },
+          data: { callStatus: 'failed' }
+        });
+
+        const errorMessage = error.message;
+        results.errors.push({
+          businessId: business.id,
+          error: errorMessage
+        });
+
+        this.logger.error(`Failed to call ${business.name}: ${errorMessage}`);
+        return { businessId: business.id, error: errorMessage, status: 'failed' };
+      }
+    };
+
+    // Execute calls either concurrently or sequentially
+    if (concurrent) {
+      await Promise.allSettled(businesses.map(makeCall));
+    } else {
+      // Sequential calls with delay
+      for (let i = 0; i < businesses.length; i++) {
+        await makeCall(businesses[i]);
+        
+        // Add delay between calls (except for the last one)
+        if (i < businesses.length - 1) {
+          await this.sleep(2000); // 2 second delay between calls
+        }
+      }
+    }
+
+    this.logger.log(`Bulk call operation completed: ${results.callsInitiated}/${results.validBusinesses} calls initiated`);
+
+    return results;
+  }
+
+  // Enhanced integrated scraping with auto-script generation
+  async scrapeWithIntegratedWorkflow(query: ScraperQuery): Promise<any> {
+    this.logger.log('Starting integrated scraping workflow');
+    
+    // First, scrape the businesses
+    const scrapeResult = await this.scrapeBusinesses(query);
+    
+    const processedBusinesses = [];
+    
+    for (const business of scrapeResult.businesses) {
+      try {
+        let assignedScript = null;
+        
+        // Auto-generate scripts if requested
+        if (query.autoGenerateScripts) {
+          assignedScript = await this.scriptManager.getOrCreateScriptForBusiness(
+            business.id!,
+            query.targetPerson,
+            query.specificGoal,
+            query.enableVerificationWorkflow || false
+          );
+          
+          // Assign the script to the business
+          await this.prisma.business.update({
+            where: { id: business.id },
+            data: {
+              assignedScriptId: assignedScript.id,
+              customGoal: query.specificGoal
+            }
+          });
+        }
+        
+        processedBusinesses.push({
+          ...business,
+          assignedScript,
+          workflowEnabled: query.enableVerificationWorkflow,
+          targetPerson: query.targetPerson,
+          specificGoal: query.specificGoal,
+          priority: query.priority || 'normal'
+        });
+        
+      } catch (error) {
+        this.logger.error(`Failed to process business ${business.name}: ${error.message}`);
+        processedBusinesses.push({
+          ...business,
+          error: error.message
+        });
+      }
+    }
+    
+    return {
+      scrapeResult,
+      businesses: processedBusinesses,
+      summary: {
+        totalFound: scrapeResult.totalFound,
+        processed: processedBusinesses.length,
+        withScripts: processedBusinesses.filter(b => 'assignedScript' in b && b.assignedScript).length,
+        workflowEnabled: query.enableVerificationWorkflow,
+        targetPerson: query.targetPerson,
+        priority: query.priority || 'normal'
+      }
+    };
+  }
+
+  // Start verification workflow for scraped businesses
+  async startVerificationWorkflowForBusinesses(businessIds: string[], options: {
+    targetPerson?: string;
+    specificGoal?: string;
+    priority?: string;
+    skipVerification?: boolean;
+  } = {}): Promise<any> {
+    this.logger.log(`Starting verification workflow for ${businessIds.length} businesses`);
+    
+    const results = [];
+    
+    for (const businessId of businessIds) {
+      try {
+        // This would integrate with the VerificationWorkflowService
+        // For now, we'll simulate the workflow initiation
+        const business = await this.prisma.business.findUnique({
+          where: { id: businessId },
+          include: { assignedScript: true }
+        });
+        
+        if (!business) {
+          results.push({
+            businessId,
+            status: 'error',
+            error: 'Business not found'
+          });
+          continue;
+        }
+        
+        if (!business.phoneNumber) {
+          results.push({
+            businessId,
+            status: 'error',
+            error: 'No phone number available'
+          });
+          continue;
+        }
+        
+        // Update business status
+        await this.prisma.business.update({
+          where: { id: businessId },
+          data: { 
+            callStatus: 'workflow_queued',
+            metadata: {
+              workflowOptions: options,
+              queuedAt: new Date()
+            } as any
+          }
+        });
+        
+        results.push({
+          businessId,
+          businessName: business.name,
+          phoneNumber: business.phoneNumber,
+          status: 'queued',
+          targetPerson: options.targetPerson,
+          specificGoal: options.specificGoal,
+          hasScript: !!business.assignedScript
+        });
+        
+      } catch (error) {
+        this.logger.error(`Failed to queue workflow for business ${businessId}: ${error.message}`);
+        results.push({
+          businessId,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+    
+    return {
+      totalBusinesses: businessIds.length,
+      queued: results.filter(r => r.status === 'queued').length,
+      errors: results.filter(r => r.status === 'error').length,
+      results
     };
   }
 }

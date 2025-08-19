@@ -5,6 +5,35 @@ export interface ScraperQuery {
   keywords?: string[];
   limit?: number;
   sources?: DataSource[];
+  
+  // Enhanced filtering options
+  targetPerson?: string; // 'head doctor', 'manager', 'owner', etc.
+  specificGoal?: string; // What to achieve when calling
+  minRating?: number; // Minimum business rating (1-5)
+  businessSize?: 'small' | 'medium' | 'large' | 'enterprise';
+  hasWebsite?: boolean; // Only businesses with websites
+  hasPhone?: boolean; // Only businesses with phone numbers
+  establishedSince?: number; // Year business was established
+  
+  // Content filtering (to exclude blog posts, etc.)
+  excludeContentTypes?: ContentType[];
+  onlyBusinessListings?: boolean; // Exclude blog articles, news, etc.
+  requirePhysicalLocation?: boolean; // Must have physical address
+  
+  // Call workflow options
+  enableVerificationWorkflow?: boolean; // Use two-phase calling
+  autoGenerateScripts?: boolean; // Create tailored scripts
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+}
+
+export enum ContentType {
+  BLOG_ARTICLES = 'blog_articles',
+  NEWS_ARTICLES = 'news_articles', 
+  SOCIAL_MEDIA = 'social_media',
+  DIRECTORIES = 'directories',
+  REVIEWS_ONLY = 'reviews_only',
+  TOP_LISTS = 'top_lists', // "Top 10 best..." articles
+  GENERIC_INFO = 'generic_info',
 }
 
 export enum DataSource {

@@ -83,6 +83,7 @@ model Script {
   isActive    Boolean  @default(true)
   
   calls       CallSession[]
+  businesses  Business[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -142,6 +143,10 @@ model Business {
   services      String[] // Array of services offered
   businessHours Json?    // Operating hours
   
+  // Script assignment
+  assignedScriptId String?
+  customGoal       String? // Override script goal with custom goal
+  
   // Scraping metadata
   source        String   // Which source it came from (google, yelp, etc)
   confidence    Float    @default(0.5)
@@ -152,9 +157,12 @@ model Business {
   lastCalled    DateTime?
   callCount     Int      @default(0)
   callOutcomes  Json?    // History of call outcomes
+  callStatus    String   @default("pending") // pending, calling, completed, failed
   
   // Additional metadata
   metadata      Json?    // Any additional data
+  
+  assignedScript Script? @relation(fields: [assignedScriptId], references: [id])
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -164,4 +172,6 @@ model Business {
   @@index([industry])
   @@index([addressState])
   @@index([lastCalled])
+  @@index([assignedScriptId])
+  @@index([callStatus])
 }

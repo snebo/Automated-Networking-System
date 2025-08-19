@@ -38,7 +38,13 @@ export default () => ({
       },
     },
     tts: {
-      provider: process.env.TTS_PROVIDER || 'elevenlabs',
+      provider: process.env.TTS_PROVIDER || 'openai',
+      openai: {
+        apiKey: process.env.OPENAI_API_KEY,
+        model: 'tts-1',
+        voice: 'fable', // alloy, echo, fable, onyx, nova, shimmer
+        speed: 1.0,
+      },
       elevenlabs: {
         apiKey: process.env.ELEVENLABS_API_KEY,
         voiceId: process.env.VOICE_ID,

@@ -13,9 +13,15 @@ export class TelephonyService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async initiateCall(phoneNumber: string, scriptId: string): Promise<string> {
+  async initiateCall(phoneNumber: string, scriptId: string, goal?: string, companyName?: string): Promise<string> {
     try {
       this.logger.log(`Initiating call to ${phoneNumber} with script ${scriptId}`);
+      if (goal) {
+        this.logger.log(`Call goal: ${goal}`);
+      }
+      if (companyName) {
+        this.logger.log(`Company: ${companyName}`);
+      }
       
       const call = await this.twilioService.makeCall(phoneNumber);
       
@@ -23,6 +29,8 @@ export class TelephonyService {
         callSid: call.sid,
         phoneNumber,
         scriptId,
+        goal: goal || 'Navigate to customer support',
+        companyName: companyName || 'Unknown Company',
         status: CallStatus.INITIATING,
         startTime: new Date(),
       });
@@ -31,6 +39,8 @@ export class TelephonyService {
         callSid: call.sid,
         phoneNumber,
         scriptId,
+        goal: goal || 'Navigate to customer support',
+        companyName: companyName || 'Unknown Company',
       });
 
       return call.sid;
@@ -185,12 +195,20 @@ export class TelephonyService {
   handleCallAnswered(event: { callSid: string; phoneNumber: string }) {
     this.logger.log(`\n📞 Call answered: ${event.callSid} to ${event.phoneNumber}`);
     
-    // Start AI decision session with a default goal
+    // Get call data to retrieve custom goal and company name
+    const callData = this.activeCalls.get(event.callSid);
+    const goal = callData?.goal || 'Navigate to customer support';
+    const companyName = callData?.companyName || 'Unknown Company';
+    
+    this.logger.log(`   🎯 Call goal: ${goal}`);
+    this.logger.log(`   🏢 Company: ${companyName}`);
+    
+    // Start AI decision session with custom goal
     this.eventEmitter.emit('ai.start_session', {
       callSid: event.callSid,
       phoneNumber: event.phoneNumber,
-      goal: 'Navigate to customer support',
-      companyName: 'Unknown Company'
+      goal: goal,
+      companyName: companyName
     });
   }
 

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsPhoneNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsPhoneNumber, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class InitiateCallDto {
@@ -19,4 +19,22 @@ export class InitiateCallDto {
   @IsString()
   @IsNotEmpty()
   scriptId: string;
+
+  @ApiProperty({
+    description: 'The goal for this call - what the AI should try to achieve',
+    example: 'I need to find a cardiologist for an appointment',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  goal?: string;
+
+  @ApiProperty({
+    description: 'The name of the company/facility being called',
+    example: 'Memorial Hospital',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  companyName?: string;
 }

@@ -48,6 +48,8 @@ export class TelephonyController {
     const callSid = await this.telephonyService.initiateCall(
       dto.phoneNumber,
       dto.scriptId,
+      dto.goal,
+      dto.companyName,
     );
     return { callSid };
   }

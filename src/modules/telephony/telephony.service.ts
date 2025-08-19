@@ -136,4 +136,16 @@ export class TelephonyService {
       this.logger.error(`Failed to update call status: ${error.message}`, error.stack);
     }
   }
+
+  handleTranscriptionReceived(callSid: string, text: string): void {
+    this.logger.log(`Transcription received for call ${callSid}: "${text}"`);
+    
+    // Emit as if it's from STT for IVR detection
+    this.eventEmitter.emit('stt.final', {
+      callSid,
+      transcript: text,
+      confidence: 0.95, // Twilio transcriptions are generally accurate
+      timestamp: new Date(),
+    });
+  }
 }

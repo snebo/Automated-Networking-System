@@ -37,7 +37,7 @@ export class TwilioService {
     }
   }
 
-  // ===== PHASE 1: BASIC CALL METHODS (CURRENTLY ACTIVE) =====
+  // ===== PHASE 2: AUDIO STREAMING METHODS (CURRENTLY ACTIVE) =====
   
   async makeCall(to: string): Promise<any> {
     this.ensureConfigured('makeCall');
@@ -47,25 +47,13 @@ export class TwilioService {
       
       this.logger.log(`Making call to ${to} from ${this.phoneNumber}`);
       
-      // Phase 1: Using inline TwiML with natural voice
-      const twimlContent = `<Response>
-        <Say voice="Polly.Joanna">Congratulations! Your IVR Navigation Agent is now fully operational.</Say>
-        <Pause length="2"/>
-        <Say voice="Polly.Joanna">Phase 1 Basic Telephony Infrastructure is complete!</Say>
-        <Pause length="2"/>
-        <Say voice="Polly.Joanna">Ready for Phase 2 Speech Processing implementation.</Say>
-        <Pause length="2"/>
-        <Gather numDigits="1" timeout="10">
-          <Say voice="Polly.Joanna">Press any key to end this call, or wait 10 seconds.</Say>
-        </Gather>
-        <Say voice="Polly.Joanna">Thank you for testing! Goodbye.</Say>
-        <Hangup/>
-      </Response>`;
+      // Phase 2: Using webhook with media streaming
+      const webhookUrl = `${baseUrl}/telephony/webhook`;
       
       const callParams = {
         to,
         from: this.phoneNumber,
-        twiml: twimlContent, // Inline TwiML (no webhook dependency)
+        url: webhookUrl, // Use webhook for media streaming TwiML
         machineDetection: 'Disable', // Prevents silent calls on trial accounts
         statusCallback: `${baseUrl}/telephony/webhook/status`,
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],

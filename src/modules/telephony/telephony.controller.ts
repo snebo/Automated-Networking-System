@@ -110,18 +110,38 @@ export class TelephonyController {
   @Header('Content-Type', 'application/xml')
   @ApiExcludeEndpoint()
   async handleWebhook(@Body() body: any) {
-    // NOTE: Currently not used - Phase 1 uses inline TwiML
-    // This will be activated in Phase 2 for real-time audio streaming and IVR navigation
-    this.logger.log('Main webhook called (Phase 2 feature):', JSON.stringify(body));
+    // Phase 2: Real-time audio streaming and IVR navigation
+    this.logger.log('Main webhook called for media streaming:', JSON.stringify(body));
     
     const { CallSid, CallStatus, Direction, From, To } = body;
     this.logger.log(`Call ${CallSid}: Status=${CallStatus}, Direction=${Direction}, From=${From}, To=${To}`);
     
-    // Placeholder TwiML for Phase 2 implementation
+    // Generate TwiML that starts media streaming and keeps call alive
+    // Use ngrok URL from APP_URL environment variable for WebSocket
+    const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    const streamUrl = appUrl.replace('https://', 'wss://').replace('http://', 'ws://');
+    
+    this.logger.log(`Setting up media stream to: ${streamUrl}/media-stream`);
+    
+    // Simple TwiML to keep the call alive and test basic functionality
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Phase 2 webhook handler activated.</Say>
+  <Say voice="Polly.Joanna">IVR Navigation Agent connected. Starting test.</Say>
+  <Pause length="2"/>
+  <Say voice="Polly.Joanna">Now recording your voice for 10 seconds. Please speak after the beep.</Say>
+  <Record 
+    action="${appUrl}/telephony/webhook/recording" 
+    method="POST"
+    timeout="10"
+    transcribe="true"
+    transcribeCallback="${appUrl}/telephony/webhook/transcription"
+    playBeep="true"
+    maxLength="10"
+    finishOnKey="#"
+  />
 </Response>`;
+    
+    this.logger.log('TwiML Response:', twimlResponse);
     
     return twimlResponse;
   }
@@ -153,9 +173,11 @@ export class TelephonyController {
 
   @Post('webhook/recording')
   @HttpCode(HttpStatus.OK)
+  @Header('Content-Type', 'application/xml')
   @ApiExcludeEndpoint()
   async handleRecordingCallback(@Body() body: any) {
-    this.logger.log('Recording callback:', body);
+    this.logger.log('\n🎙️ RECORDING CALLBACK RECEIVED:');
+    this.logger.log(JSON.stringify(body, null, 2));
     
     const { CallSid, RecordingUrl, RecordingDuration } = body;
     
@@ -166,7 +188,12 @@ export class TelephonyController {
       activeCall.recordingDuration = RecordingDuration ? parseInt(RecordingDuration) : undefined;
     }
     
-    return { received: true };
+    // Continue the call with another recording or hang up
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Thank you for testing the IVR system. Goodbye!</Say>
+  <Hangup/>
+</Response>`;
   }
 
   @Post('webhook/gather')
@@ -190,11 +217,15 @@ export class TelephonyController {
   @HttpCode(HttpStatus.OK)
   @ApiExcludeEndpoint()
   async handleTranscriptionCallback(@Body() body: any) {
-    this.logger.log('Transcription callback:', body);
+    this.logger.log('\n📝 TWILIO TRANSCRIPTION RECEIVED:');
+    this.logger.log(JSON.stringify(body, null, 2));
     
     const { CallSid, TranscriptionText, TranscriptionStatus } = body;
     
     if (TranscriptionStatus === 'completed' && TranscriptionText) {
+      this.logger.log(`\n🎤 TRANSCRIPTION for call ${CallSid}:`);
+      this.logger.log(`   Text: "${TranscriptionText}"`);
+      
       // Store transcript
       const activeCall = this.telephonyService.getActiveCall(CallSid);
       if (activeCall) {
@@ -208,6 +239,9 @@ export class TelephonyController {
           source: 'twilio-transcription'
         });
       }
+      
+      // Emit for IVR detection
+      this.telephonyService.handleTranscriptionReceived(CallSid, TranscriptionText);
     }
     
     return { received: true };

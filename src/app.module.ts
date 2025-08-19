@@ -5,6 +5,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TelephonyModule } from './modules/telephony/telephony.module';
 import { DatabaseModule } from './modules/database/database.module';
 import { WebScraperModule } from './modules/web-scraper/web-scraper.module';
+import { CallManagerModule } from './modules/call-manager/call-manager.module';
+import { SpeechProcessorModule } from './modules/speech-processor/speech-processor.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -27,9 +29,10 @@ import configuration from './config/configuration';
     DatabaseModule,
     TelephonyModule,
     WebScraperModule,
+    CallManagerModule,
+    SpeechProcessorModule,
     // AiEngineModule,
     // IvrNavigatorModule,
-    // CallManagerModule,
     // ScriptManagerModule,
   ],
 })

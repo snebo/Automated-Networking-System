@@ -23,7 +23,7 @@ export class DecisionEngineService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  startCallSession(callSid: string, phoneNumber: string, goal: string, companyName?: string): void {
+  startCallSession(callSid: string, phoneNumber: string, goal: string, companyName?: string, targetPerson?: string): void {
     const session: CallSession = {
       callSid,
       phoneNumber,
@@ -38,19 +38,23 @@ export class DecisionEngineService {
     
     this.logger.log(`Started AI decision session for call ${callSid}`);
     this.logger.log(`Goal: ${goal}`);
+    this.logger.log(`Target Person: ${targetPerson || 'Not specified'}`);
     this.logger.log(`Company: ${companyName || 'Unknown'}`);
 
-    // Emit initial response
+    // Emit session started event for both IVR navigation and human conversation
     this.eventEmitter.emit('ai.session_started', {
       callSid,
+      phoneNumber,
       goal,
+      targetPerson: targetPerson || this.extractTargetPersonFromGoal(goal),
+      companyName,
       response: `Hello! I'm calling to help you with ${goal}. Let me navigate the phone system for you.`
     });
   }
 
   @OnEvent('ai.start_session')
-  handleStartSession(event: { callSid: string; phoneNumber: string; goal: string; companyName?: string }) {
-    this.startCallSession(event.callSid, event.phoneNumber, event.goal, event.companyName);
+  handleStartSession(event: { callSid: string; phoneNumber: string; goal: string; companyName?: string; targetPerson?: string }) {
+    this.startCallSession(event.callSid, event.phoneNumber, event.goal, event.companyName, event.targetPerson);
   }
 
   @OnEvent('ai.session_ended')
@@ -218,5 +222,34 @@ export class DecisionEngineService {
     };
 
     return await this.openaiService.makeIVRDecision(context);
+  }
+
+  private extractTargetPersonFromGoal(goal: string): string {
+    const goalLower = goal.toLowerCase();
+    
+    // Extract target person from common goal patterns
+    if (goalLower.includes('head doctor') || goalLower.includes('chief medical')) {
+      return 'head doctor';
+    } else if (goalLower.includes('er doctor') || goalLower.includes('emergency')) {
+      return 'er doctor';
+    } else if (goalLower.includes('cardiologist') || goalLower.includes('heart')) {
+      return 'cardiologist';
+    } else if (goalLower.includes('brain surgeon') || goalLower.includes('neurosurgeon')) {
+      return 'brain surgeon';
+    } else if (goalLower.includes('manager')) {
+      return 'manager';
+    } else if (goalLower.includes('owner')) {
+      return 'owner';
+    } else if (goalLower.includes('customer service')) {
+      return 'customer service';
+    } else if (goalLower.includes('billing') || goalLower.includes('accounts')) {
+      return 'billing';
+    } else if (goalLower.includes('appointment') || goalLower.includes('scheduling')) {
+      return 'appointment scheduler';
+    } else if (goalLower.includes('technical support')) {
+      return 'technical support';
+    } else {
+      return 'appropriate person';
+    }
   }
 }

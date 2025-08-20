@@ -733,10 +733,15 @@ export class WebScraperService {
     const selectors = [
       'a[href^="tel:"]',
       '.phone',
-      '.telephone',
+      '.telephone', 
       '.contact-phone',
       '.phone-number',
       '.tel',
+      '.contact-info',
+      '.contact',
+      '[class*="phone"]',
+      '[class*="contact"]',
+      'footer',
     ];
 
     for (const selector of selectors) {
@@ -751,12 +756,25 @@ export class WebScraperService {
       }
     }
 
-    // Search for phone patterns in all text
-    const phoneRegex = /(\+?1?[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/g;
-    const bodyText = $('body').text();
-    const match = phoneRegex.exec(bodyText);
+    // Search for phone patterns in all text with multiple regex patterns
+    const phonePatterns = [
+      /(\+?1?[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/g,
+      /\b\d{3}-\d{3}-\d{4}\b/g,
+      /\b\(\d{3}\)\s?\d{3}-\d{4}\b/g,
+      /\b\d{3}\.\d{3}\.\d{4}\b/g,
+      /\b\d{10}\b/g,
+    ];
     
-    return match ? match[0] : null;
+    const bodyText = $('body').text();
+    
+    for (const regex of phonePatterns) {
+      const match = regex.exec(bodyText);
+      if (match) {
+        return match[0];
+      }
+    }
+    
+    return null;
   }
 
   private findAddress($: any): string | null {
@@ -1117,8 +1135,8 @@ export class WebScraperService {
       filtered = filtered.filter(business => this.isValidBusinessListing(business, query));
     }
 
-    // Require phone number
-    if (query.hasPhone !== false) { // Default to requiring phone
+    // Require phone number (but be more lenient for testing)
+    if (query.hasPhone === true) { // Only filter if explicitly required
       filtered = filtered.filter(business => business.phoneNumber);
     }
 
@@ -1792,19 +1810,26 @@ export class WebScraperService {
   async scrapeWithIntegratedWorkflow(query: ScraperQuery): Promise<any> {
     this.logger.log('Starting integrated scraping workflow');
     
-    // First, scrape the businesses
+    // First, scrape the businesses (this saves them to database)
     const scrapeResult = await this.scrapeBusinesses(query);
+    
+    // Get the saved businesses from database to have their IDs
+    const savedBusinesses = await this.getStoredBusinesses({
+      // Filter by the same criteria
+      industry: query.industry,
+      location: query.location
+    });
     
     const processedBusinesses = [];
     
-    for (const business of scrapeResult.businesses) {
+    for (const business of savedBusinesses) {
       try {
         let assignedScript = null;
         
         // Auto-generate scripts if requested
-        if (query.autoGenerateScripts) {
+        if (query.autoGenerateScripts && business.id) {
           assignedScript = await this.scriptManager.getOrCreateScriptForBusiness(
-            business.id!,
+            business.id,
             query.targetPerson,
             query.specificGoal,
             query.enableVerificationWorkflow || false
@@ -1928,5 +1953,46 @@ export class WebScraperService {
       errors: results.filter(r => r.status === 'error').length,
       results
     };
+  }
+
+  // Script viewing methods
+  async getScriptById(scriptId: string) {
+    const script = await this.prisma.script.findUnique({
+      where: { id: scriptId },
+      include: {
+        businesses: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        }
+      }
+    });
+
+    if (!script) {
+      throw new Error('Script not found');
+    }
+
+    return script;
+  }
+
+  async getAllScripts() {
+    const scripts = await this.prisma.script.findMany({
+      include: {
+        businesses: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    return scripts;
   }
 }

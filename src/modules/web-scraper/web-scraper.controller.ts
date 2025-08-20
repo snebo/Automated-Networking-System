@@ -382,4 +382,23 @@ export class WebScraperController {
       ]
     };
   }
+
+  @Get('scripts/:scriptId')
+  @ApiOperation({ 
+    summary: 'Get full script content by ID',
+    description: 'Returns the complete script including phases, rules, and conversation flow'
+  })
+  @ApiParam({ name: 'scriptId', description: 'Script ID' })
+  async getScriptById(@Param('scriptId') scriptId: string) {
+    return this.scraperService.getScriptById(scriptId);
+  }
+
+  @Get('scripts')
+  @ApiOperation({ 
+    summary: 'Get all scripts',
+    description: 'Returns all generated scripts in the system'
+  })
+  async getAllScripts() {
+    return this.scraperService.getAllScripts();
+  }
 }

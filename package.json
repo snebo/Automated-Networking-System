@@ -16,7 +16,9 @@
     "typecheck": "tsc --noEmit",
     "setup:dev": "node scripts/setup-development.js",
     "update:ngrok": "node scripts/update-ngrok.js",
-    "test:call": "node scripts/test-call.js"
+    "test:call": "node scripts/test-call.js",
+    "test:full-flow": "node scripts/test-full-flow.js",
+    "test:mock-flow": "node scripts/test-full-flow-mock.js"
   },
   "dependencies": {
     "@deepgram/sdk": "^3.2.0",

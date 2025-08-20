@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class AiEngineService {
-  private readonly logger = new Logger(AiEngineService.name);
+export class ConversationEngineService {
+  private readonly logger = new Logger(ConversationEngineService.name);
 
   constructor(private readonly configService: ConfigService) {}
 

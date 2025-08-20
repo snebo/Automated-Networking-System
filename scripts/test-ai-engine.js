@@ -3,8 +3,8 @@ require('dotenv').config({ path: '.env.development' });
 
 const { ConfigService } = require('@nestjs/config');
 const { EventEmitter2 } = require('@nestjs/event-emitter');
-const { OpenAIService } = require('../dist/modules/ai-engine/services/openai.service');
-const { DecisionEngineService } = require('../dist/modules/ai-engine/services/decision-engine.service');
+const { OpenAIService } = require('../dist/modules/conversation-engine/services/openai.service');
+const { DecisionEngineService } = require('../dist/modules/conversation-engine/services/decision-engine.service');
 
 // Mock ConfigService
 class MockConfigService {

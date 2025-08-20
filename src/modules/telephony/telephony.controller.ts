@@ -19,6 +19,7 @@ import {
   ApiExcludeEndpoint,
 } from '@nestjs/swagger';
 import { TelephonyService } from './telephony.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InitiateCallDto } from './dto/initiate-call.dto';
 import { SendDTMFDto } from './dto/send-dtmf.dto';
 
@@ -26,8 +27,31 @@ import { SendDTMFDto } from './dto/send-dtmf.dto';
 @Controller('telephony')
 export class TelephonyController {
   private readonly logger = new Logger(TelephonyController.name);
+  private waitingCalls = new Set<string>(); // Track calls in waiting state
+  private humanConversationCalls = new Set<string>(); // Track calls in human conversation
 
-  constructor(private readonly telephonyService: TelephonyService) {}
+  constructor(
+    private readonly telephonyService: TelephonyService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {
+    // Listen for waiting state changes
+    this.eventEmitter.on('ai.entering_wait_state', (event: { callSid: string }) => {
+      console.log(`📋 Telephony controller: Call ${event.callSid.slice(-8)} entering wait state`);
+      this.waitingCalls.add(event.callSid);
+    });
+
+    this.eventEmitter.on('ai.human_reached', (event: { callSid: string }) => {
+      console.log(`📋 Telephony controller: Call ${event.callSid.slice(-8)} exiting wait state`);
+      this.waitingCalls.delete(event.callSid);
+      this.humanConversationCalls.add(event.callSid);
+    });
+
+    // Clean up when call ends
+    this.eventEmitter.on('call.ended', (event: { callSid: string }) => {
+      this.waitingCalls.delete(event.callSid);
+      this.humanConversationCalls.delete(event.callSid);
+    });
+  }
 
   // ===== PHASE 1: BASIC CALL MANAGEMENT API (CURRENTLY ACTIVE) =====
 
@@ -105,7 +129,7 @@ export class TelephonyController {
     return this.telephonyService.getActiveCall(callSid);
   }
 
-  // ===== PHASE 2: WEBHOOK HANDLERS (FOR FUTURE USE WITH REAL-TIME AUDIO) =====
+  // ===== PHASE 2: WEBHOOK AND MEDIA STREAM HANDLERS =====
 
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
@@ -125,22 +149,39 @@ export class TelephonyController {
     
     this.logger.log(`Setting up media stream to: ${streamUrl}/media-stream`);
     
-    // Simple TwiML to keep the call alive and test basic functionality
+    // Check call state to determine appropriate TwiML
+    const isWaiting = this.isCallInWaitingState(CallSid);
+    const isHumanConversation = this.humanConversationCalls.has(CallSid);
+    
+    if (isWaiting) {
+      console.log(`⏸️  Main webhook: Call in WAITING state - using silent extended timeout (120s, resets on speech)`);
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather action="${appUrl}/telephony/webhook/gather" method="POST" timeout="120" speechTimeout="10" input="dtmf speech">
+    <Pause length="115"/>
+  </Gather>
+  <Redirect>${appUrl}/telephony/webhook</Redirect>
+</Response>`;
+    }
+    
+    if (isHumanConversation) {
+      console.log(`🗣️  Main webhook: Call in HUMAN CONVERSATION - staying silent and listening`);
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather action="${appUrl}/telephony/webhook/gather" method="POST" timeout="30" speechTimeout="5" input="dtmf speech">
+    <Pause length="25"/>
+  </Gather>
+  <Redirect>${appUrl}/telephony/webhook</Redirect>
+</Response>`;
+    }
+    
+    // TwiML to keep the call alive and gather speech/DTMF input - SILENT to avoid beeps
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">IVR Navigation Agent connected. Starting test.</Say>
-  <Pause length="2"/>
-  <Say voice="Polly.Joanna">Now recording your voice for 10 seconds. Please speak after the beep.</Say>
-  <Record 
-    action="${appUrl}/telephony/webhook/recording" 
-    method="POST"
-    timeout="10"
-    transcribe="true"
-    transcribeCallback="${appUrl}/telephony/webhook/transcription"
-    playBeep="true"
-    maxLength="10"
-    finishOnKey="#"
-  />
+  <Gather action="${appUrl}/telephony/webhook/gather" method="POST" timeout="30" speechTimeout="5" input="dtmf speech">
+    <Pause length="25"/>
+  </Gather>
+  <Redirect>${appUrl}/telephony/webhook</Redirect>
 </Response>`;
     
     this.logger.log('TwiML Response:', twimlResponse);
@@ -157,7 +198,17 @@ export class TelephonyController {
     // Currently active - receives call status updates for monitoring
     this.logger.log('Call status update:', body);
     
-    const { CallSid, CallStatus, Duration } = body;
+    const { CallSid, CallStatus, Duration, CallDuration } = body;
+    
+    // Make call ending VERY noticeable
+    if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'busy' || CallStatus === 'no-answer') {
+      console.log('\n' + '🔴'.repeat(80));
+      console.log(`📞 CALL ENDED | ${CallSid.slice(-8)} | Status: ${CallStatus.toUpperCase()}`);
+      const actualDuration = CallDuration || Duration;
+      if (actualDuration) console.log(`⏰ Duration: ${actualDuration} seconds`);
+      console.log('🔴'.repeat(80));
+      console.log('');
+    }
     
     // Update call status in active calls
     const activeCall = this.telephonyService.getActiveCall(CallSid);
@@ -173,12 +224,37 @@ export class TelephonyController {
     return { received: true };
   }
 
+  @Post('media-stream')
+  @HttpCode(HttpStatus.OK)
+  @Header('Content-Type', 'text/plain')
+  @ApiExcludeEndpoint()
+  async handleMediaStream(@Body() body: any) {
+    // This handles Twilio Media Stream messages
+    // For now, just log and return success
+    // In the future, this will handle real-time audio processing
+    this.logger.log('Media stream message received:', JSON.stringify(body, null, 2));
+    
+    if (body.event === 'connected') {
+      this.logger.log('Media stream connected for call:', body.streamSid);
+    } else if (body.event === 'start') {
+      this.logger.log('Media stream started for call:', body.start?.callSid);
+    } else if (body.event === 'media') {
+      // Handle audio data
+      const { payload, timestamp, sequenceNumber } = body.media || {};
+      this.logger.debug(`Received audio payload: ${payload?.length} bytes, seq: ${sequenceNumber}`);
+    } else if (body.event === 'stop') {
+      this.logger.log('Media stream stopped for call:', body.stop?.callSid);
+    }
+    
+    return 'OK';
+  }
+
   @Post('webhook/recording')
   @HttpCode(HttpStatus.OK)
   @Header('Content-Type', 'application/xml')
   @ApiExcludeEndpoint()
   async handleRecordingCallback(@Body() body: any) {
-    this.logger.log('\n🎙️ RECORDING CALLBACK RECEIVED:');
+    this.logger.log('\n🎙️ RECORDING CALLBACK RECEIVED (Legacy - not used with streaming):');
     this.logger.log(JSON.stringify(body, null, 2));
     
     const { CallSid, RecordingUrl, RecordingDuration } = body;
@@ -190,29 +266,73 @@ export class TelephonyController {
       activeCall.recordingDuration = RecordingDuration ? parseInt(RecordingDuration) : undefined;
     }
     
-    // Continue the call with another recording or hang up
+    // Return empty response since we're using streaming
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Thank you for testing the IVR system. Goodbye!</Say>
-  <Hangup/>
 </Response>`;
   }
 
   @Post('webhook/gather')
   @HttpCode(HttpStatus.OK)
+  @Header('Content-Type', 'application/xml')
   @ApiExcludeEndpoint()
   async handleGatherCallback(@Body() body: any) {
-    this.logger.log('Gather callback:', body);
+    this.logger.log('Gather callback received:', body);
     
-    const { CallSid, Digits } = body;
+    const { CallSid, Digits, SpeechResult } = body;
+    const appUrl = process.env.APP_URL || 'http://localhost:3000';
     
     if (Digits) {
-      // Emit DTMF event for processing
+      // User pressed a key - handle it
+      this.logger.log(`User pressed: ${Digits} for call ${CallSid}`);
       this.telephonyService.handleDTMFReceived(CallSid, Digits);
     }
     
-    // Return TwiML to continue call flow
-    return '<Response><Say>Thank you for your input.</Say></Response>';
+    if (SpeechResult) {
+      // Speech was detected - process for IVR detection
+      this.logger.log(`Speech detected for call ${CallSid}: "${SpeechResult}"`);
+      this.telephonyService.handleTranscriptionReceived(CallSid, SpeechResult);
+    }
+    
+    // Check call state to return appropriate TwiML
+    const activeCall = this.telephonyService.getActiveCall(CallSid);
+    const isWaiting = this.isCallInWaitingState(CallSid);
+    const isHumanConversation = this.humanConversationCalls.has(CallSid);
+    
+    if (isWaiting) {
+      // In waiting state - use extended timeout that resets on speech
+      console.log(`⏸️  Call in WAITING state - using extended timeout (120s, resets on speech)`);
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather action="${appUrl}/telephony/webhook/gather" method="POST" timeout="120" speechTimeout="10" input="dtmf speech">
+    <Pause length="115"/>
+  </Gather>
+  <Redirect>${appUrl}/telephony/webhook</Redirect>
+</Response>`;
+    } else if (isHumanConversation) {
+      // In human conversation - stay silent and listen
+      console.log(`🗣️  Gather callback: Call in HUMAN CONVERSATION - staying silent`);
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather action="${appUrl}/telephony/webhook/gather" method="POST" timeout="30" speechTimeout="5" input="dtmf speech">
+    <Pause length="25"/>
+  </Gather>
+  <Redirect>${appUrl}/telephony/webhook</Redirect>
+</Response>`;
+    } else {
+      // Normal active listening state (IVR navigation) - SILENT to avoid beep
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather action="${appUrl}/telephony/webhook/gather" method="POST" timeout="30" speechTimeout="5" input="dtmf speech">
+    <Pause length="25"/>
+  </Gather>
+  <Redirect>${appUrl}/telephony/webhook</Redirect>
+</Response>`;
+    }
+  }
+
+  private isCallInWaitingState(callSid: string): boolean {
+    return this.waitingCalls.has(callSid);
   }
 
   @Post('webhook/transcription')

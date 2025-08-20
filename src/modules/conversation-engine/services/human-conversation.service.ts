@@ -45,52 +45,152 @@ export class HumanConversationService {
     this.logger.log(`Started simple human session for call ${event.callSid} - Goal: ${event.goal}`);
   }
 
-  @OnEvent('stt.final')
-  async handleTranscript(event: {
+  @OnEvent('ivr.detection_completed')
+  async handleIVRDetectionCompleted(event: {
     callSid: string;
     transcript: string;
+    ivrDetected: boolean;
     confidence: number;
     timestamp: Date;
   }) {
     const session = this.activeSessions.get(event.callSid);
     if (!session) return;
 
+    // Only process for human conversation if no IVR was detected
+    if (!event.ivrDetected) {
+      this.processTranscriptForHuman(event, session);
+    }
+  }
+
+  private async processTranscriptForHuman(event: any, session: any) {
     const transcript = event.transcript.trim().toLowerCase();
 
     // Step 1: Detect if we've reached a human (post-IVR)
     if (!session.hasReachedHuman && this.isHumanSpeech(transcript)) {
       session.hasReachedHuman = true;
-      this.logger.log(`🤝 HUMAN DETECTED for call ${session.callSid}: "${event.transcript}"`);
+      console.log(`\n👨‍💼 HUMAN DETECTED`);
+      console.log(`📞 Call: ${session.callSid.slice(-8)}`);
+      console.log(`💬 Human said: "${event.transcript}"`);
+      console.log(`🤝 Responding to human's greeting...`);
+      console.log('');
 
-      // Wait a moment, then ask our question
-      setTimeout(() => {
-        this.askSimpleQuestion(session);
-      }, 2000);
+      // Notify that we've reached a human (exits waiting state)
+      this.eventEmitter.emit('ai.human_reached', {
+        callSid: session.callSid,
+        transcript: event.transcript,
+      });
+
+      // Respond immediately to what the human just said (don't wait 2 seconds)
+      this.respondToHuman(session, event.transcript);
     }
 
-    // Step 2: If we've asked our question, save their response
+    // Step 2: If we've asked our question, analyze their response intelligently
     else if (session.hasAskedQuestion) {
-      session.humanResponse = event.transcript;
-      await this.saveResponseAndEnd(session);
+      console.log(`\n🧠 ANALYZING HUMAN RESPONSE`);
+      console.log(`💬 Human said: "${event.transcript}"`);
+      
+      const responseAnalysis = this.analyzeResponse(event.transcript, session);
+      
+      if (responseAnalysis.hasContactInfo) {
+        console.log(`✅ CONTACT INFO RECEIVED - Ending call`);
+        session.humanResponse = event.transcript;
+        await this.saveResponseAndEnd(session);
+      } else if (responseAnalysis.isQuestion) {
+        console.log(`❓ HUMAN ASKED QUESTION - Providing clarification`);
+        this.handleHumanQuestion(session, event.transcript);
+      } else {
+        console.log(`🔄 INCOMPLETE INFO - Asking follow-up`);
+        this.askFollowUpQuestion(session, event.transcript);
+      }
     }
   }
 
   private isHumanSpeech(transcript: string): boolean {
-    // Simple indicators that we're talking to a person, not an IVR
-    const humanIndicators = [
-      'hello',
-      'hi',
-      'good morning',
-      'good afternoon',
-      'how can i help',
-      'how may i help',
-      'what can i do',
-      'thank you for calling',
-      'this is',
-      'speaking',
+    const text = transcript.toLowerCase();
+    
+    // First check if this is a hold/wait message (NOT human)
+    const holdIndicators = [
+      'please hold',
+      'please wait',
+      'hold while',
+      'wait while',
+      'connecting you',
+      'try to connect',
+      'transferring',
+      'one moment please',
+      'just a moment',
+      'hold on',
     ];
+    
+    if (holdIndicators.some(indicator => text.includes(indicator))) {
+      console.log('📞 HOLD MESSAGE DETECTED - Not human speech');
+      return false; // This is an automated hold message
+    }
+    
+    // Check for obvious IVR/automated messages (NOT human)
+    const automatedIndicators = [
+      'press',
+      'dial',
+      'menu',
+      'directory',
+      'extension',
+      'repeat this menu',
+      'thank you for calling',
+    ];
+    
+    if (automatedIndicators.some(indicator => text.includes(indicator))) {
+      console.log('🤖 AUTOMATED MESSAGE DETECTED - Not human speech');
+      return false; // This is an automated system message
+    }
+    
+    // More inclusive human detection - if it's NOT a hold/automated message, assume it's human
+    // This is better for real conversations where humans say unpredictable things
+    const minLength = 3; // At least 3 characters
+    const hasWords = text.trim().split(/\s+/).length >= 1; // At least 1 word
+    
+    const isLikelyHuman = hasWords && text.length >= minLength;
+    
+    if (isLikelyHuman) {
+      console.log('👨‍💼 HUMAN SPEECH DETECTED (anything not automated)');
+      console.log(`   Text: "${transcript}"`);
+    }
+    
+    return isLikelyHuman;
+  }
 
-    return humanIndicators.some((indicator) => transcript.includes(indicator));
+  private respondToHuman(session: SimpleHumanSession, humanSpeech: string): void {
+    if (session.hasAskedQuestion) return;
+
+    // Respond naturally to what the human said, then ask our question
+    let response = "Hello, thank you for taking my call.";
+    
+    // Customize response based on what they said
+    const speech = humanSpeech.toLowerCase();
+    if (speech.includes('help') || speech.includes('assist')) {
+      response = "Hello, yes I could use your help with something.";
+    } else if (speech.includes('speaking') || speech.includes('this is')) {
+      response = "Hello, thank you for taking my call.";  
+    } else if (speech.includes('how are you') || speech.includes('how can i')) {
+      response = "Hello, I'm doing well thank you.";
+    }
+
+    // Add our actual request
+    const service = this.extractService(session.goal);
+    const fullRequest = `${response} I'm hoping you can provide me with contact information for ${service} at your facility. I'm looking to ${session.goal.toLowerCase()}.`;
+
+    console.log(`🗣️  RESPONDING TO HUMAN: "${fullRequest}"`);
+
+    session.hasAskedQuestion = true;
+    session.questionAsked = fullRequest;
+
+    // Generate and send TTS
+    this.eventEmitter.emit('tts.speak', {
+      callSid: session.callSid,
+      text: fullRequest,
+      priority: 'high',
+    });
+
+    this.logger.log(`✅ Responded to human for call ${session.callSid}: "${fullRequest}"`);
   }
 
   private askSimpleQuestion(session: SimpleHumanSession): void {
@@ -108,7 +208,79 @@ export class HumanConversationService {
     this.eventEmitter.emit('tts.speak', {
       callSid: session.callSid,
       text: question,
-      voice: 'fable',
+      priority: 'high',
+    });
+  }
+
+  private analyzeResponse(humanResponse: string, session: SimpleHumanSession): {
+    hasContactInfo: boolean;
+    isQuestion: boolean;
+    needsFollowUp: boolean;
+  } {
+    const text = humanResponse.toLowerCase();
+    
+    // Check if response contains contact information
+    const hasPhoneNumber = /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/.test(text);
+    const hasEmail = /@/.test(text);
+    const hasExtension = /ext|extension|x\d+/.test(text);
+    
+    // Check if response mentions a doctor/specialist name (indicates they're providing specific info)
+    const hasDoctorTitle = /dr\.|doctor|specialist|cardiologist|physician/.test(text);
+    const hasProperName = /[A-Z][a-z]+\s+[A-Z][a-z]+/.test(humanResponse); // Checks for capitalized names
+    const hasName = hasDoctorTitle || hasProperName;
+    
+    // Has contact info if: phone number, email, or extension with a name/department
+    const hasContactInfo = hasPhoneNumber || hasEmail || (hasExtension && hasName);
+    
+    // Check if it's a question
+    const questionWords = ['what', 'which', 'who', 'where', 'when', 'how', 'why', 'can you', 'could you', 'would you', 'do you'];
+    const isQuestion = questionWords.some(word => text.includes(word)) || text.includes('?');
+    
+    return {
+      hasContactInfo,
+      isQuestion,
+      needsFollowUp: !hasContactInfo && !isQuestion
+    };
+  }
+
+  private handleHumanQuestion(session: SimpleHumanSession, humanQuestion: string): void {
+    const text = humanQuestion.toLowerCase();
+    let response = '';
+    
+    if (text.includes('which') && text.includes('cardiologist')) {
+      response = "I'm looking for any cardiologist who can help with a heart condition consultation. Could you provide me with the contact information for your cardiology department or a specific cardiologist's office number?";
+    } else if (text.includes('what') && text.includes('kind')) {
+      response = "I need to schedule a consultation for heart-related concerns. Could you give me the direct phone number or extension for your cardiology department?";
+    } else if (text.includes('who') && text.includes('doctor')) {
+      response = "Any cardiologist at your facility would be great. Could you provide me with their contact details - phone number, extension, or email?";
+    } else {
+      response = "I'm calling to get contact information for a cardiologist at your facility - specifically their direct phone number or extension so I can schedule an appointment. Can you help me with that?";
+    }
+    
+    console.log(`🗣️  CLARIFYING TO HUMAN: "${response}"`);
+    
+    this.eventEmitter.emit('tts.speak', {
+      callSid: session.callSid,
+      text: response,
+      priority: 'high',
+    });
+  }
+
+  private askFollowUpQuestion(session: SimpleHumanSession, humanResponse: string): void {
+    const followUps = [
+      "That's helpful, but could you also provide me with a direct phone number or extension for the cardiology department?",
+      "Great, and what would be the best number to reach them at?",
+      "Thank you. Could you give me their contact information so I can call them directly?",
+      "I appreciate that. What's their direct line or extension number?"
+    ];
+    
+    const response = followUps[Math.floor(Math.random() * followUps.length)];
+    
+    console.log(`🗣️  FOLLOW-UP QUESTION: "${response}"`);
+    
+    this.eventEmitter.emit('tts.speak', {
+      callSid: session.callSid,
+      text: response,
       priority: 'high',
     });
   }
@@ -175,7 +347,6 @@ export class HumanConversationService {
     this.eventEmitter.emit('tts.speak', {
       callSid: session.callSid,
       text: 'Thank you very much for your help. Have a great day!',
-      voice: 'fable',
       priority: 'high',
     });
 

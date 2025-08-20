@@ -37,20 +37,21 @@ export class TTSHandlerService {
     priority?: 'low' | 'medium' | 'high';
     voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
   }) {
-    const request: TTSRequest = {
-      callSid: event.callSid,
-      text: event.text,
-      priority: event.priority || 'medium',
-      voice: event.voice,
-      timestamp: new Date(),
-    };
+    try {
+      const request: TTSRequest = {
+        callSid: event.callSid,
+        text: event.text,
+        priority: event.priority || 'medium',
+        voice: event.voice,
+        timestamp: new Date(),
+      };
 
-    this.logger.log(`\n🗣️ TTS REQUEST for call ${event.callSid}:`);
-    this.logger.log(`   Text: "${event.text}"`);
-    this.logger.log(`   Priority: ${request.priority}`);
-    this.logger.log(`   Voice: ${request.voice || 'default'}\n`);
+      this.logger.log(`🗣️ TTS REQUEST for call ${event.callSid}: "${event.text.substring(0, 50)}..."`);
 
-    await this.queueTTSRequest(request);
+      await this.queueTTSRequest(request);
+    } catch (error) {
+      this.logger.error(`TTS handler error: ${error.message}`, error.stack);
+    }
   }
 
   private async queueTTSRequest(request: TTSRequest): Promise<void> {
@@ -94,28 +95,11 @@ export class TTSHandlerService {
     const request = session.currentRequest;
 
     try {
-      this.logger.log(`🎵 GENERATING SPEECH for call ${request.callSid}:`);
+      this.logger.log(`🎵 SPEAKING TEXT DIRECTLY via TwiML for call ${request.callSid}:`);
       this.logger.log(`   Text: "${request.text}"`);
 
-      // Check if TTS is available
-      if (!this.openaiTTS.isAvailable()) {
-        this.logger.warn(`OpenAI TTS not available for call ${request.callSid}. Skipping speech generation.`);
-        await this.finishCurrentRequest(session);
-        return;
-      }
-
-      // Generate speech audio
-      const defaultVoice = this.configService.get<string>('speech.tts.voice', 'fable') as 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
-      const audioBuffer = await this.openaiTTS.generateSpeech(request.text, {
-        voice: request.voice || defaultVoice,
-        speed: this.configService.get<number>('speech.tts.speed', 1.0),
-        model: 'tts-1'
-      });
-
-      this.logger.log(`✅ Generated ${audioBuffer.length} bytes of speech audio`);
-
-      // Play audio through Twilio call
-      await this.playAudioOnCall(request.callSid, audioBuffer);
+      // Send the response immediately - NO FILLER (it was killing calls)
+      await this.playAudioOnCall(request.callSid, Buffer.from(''), request.text);
 
       this.logger.log(`🔊 Speech playback completed for call ${request.callSid}`);
 
@@ -126,27 +110,37 @@ export class TTSHandlerService {
     await this.finishCurrentRequest(session);
   }
 
-  private async playAudioOnCall(callSid: string, audioBuffer: Buffer): Promise<void> {
+  private async playAudioOnCall(callSid: string, audioBuffer: Buffer, text: string): Promise<void> {
     try {
-      // For now, we'll log that we would play the audio
-      // In a full implementation, this would stream audio to the Twilio call
       this.logger.log(`🔊 PLAYING AUDIO on call ${callSid} (${audioBuffer.length} bytes)`);
       
-      // Simulate audio playback time based on text length and speech rate
-      // Approximate: 150 words per minute, average 5 characters per word
-      const estimatedDuration = Math.max(2000, audioBuffer.length / 1000); // At least 2 seconds
+      // Use TwiML to speak the text immediately on the active call
+      // This replaces the current TwiML with speech + redirect back to listening
+      const baseUrl = this.configService.get('app.url') || process.env.APP_URL || 'http://localhost:3000';
       
-      // TODO: Implement actual Twilio audio streaming
-      // This would involve using Twilio's Media Streams API to inject audio
-      // await this.twilioService.playAudio(callSid, audioBuffer);
+      const speechTwiML = `<Response>
+        <Say voice="alice">${this.escapeForTwiML(text)}</Say>
+        <Redirect>${baseUrl}/telephony/webhook</Redirect>
+      </Response>`;
       
-      // For now, simulate the playback duration
-      await new Promise(resolve => setTimeout(resolve, estimatedDuration));
+      // Update the call with speech TwiML using existing method
+      await this.twilioService.updateCallWithTwiML(callSid, speechTwiML);
+      
+      // No artificial delay needed - TwiML executes immediately
       
     } catch (error) {
       this.logger.error(`Failed to play audio on call ${callSid}: ${error.message}`);
       throw error;
     }
+  }
+
+  private escapeForTwiML(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
   }
 
   private async finishCurrentRequest(session: ActiveTTSSession): Promise<void> {

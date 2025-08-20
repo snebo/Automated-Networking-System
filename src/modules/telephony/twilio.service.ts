@@ -87,12 +87,32 @@ export class TwilioService {
     this.ensureConfigured('sendDTMF');
     
     try {
+      const baseUrl = this.configService.get('app.url') || process.env.APP_URL || 'http://localhost:3000';
+      
+      // Send DTMF but keep call alive by redirecting back to webhook with extended timeout
       await this.twilioClient!.calls(callSid).update({
-        twiml: `<Response><Play digits="${digits}"/></Response>`,
+        twiml: `<Response>
+          <Play digits="${digits}"/>
+          <Redirect>${baseUrl}/telephony/webhook</Redirect>
+        </Response>`,
       });
       this.logger.log(`DTMF sent to ${callSid}: ${digits}`);
     } catch (error) {
       this.logger.error(`Failed to send DTMF: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async updateCallWithTwiML(callSid: string, twiml: string): Promise<void> {
+    this.ensureConfigured('updateCallWithTwiML');
+    
+    try {
+      await this.twilioClient!.calls(callSid).update({
+        twiml: twiml,
+      });
+      this.logger.log(`Updated call ${callSid} with custom TwiML`);
+    } catch (error) {
+      this.logger.error(`Failed to update call with TwiML: ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -113,7 +133,7 @@ export class TwilioService {
 
   generateTwiML(text: string): string {
     const response = new Twilio.twiml.VoiceResponse();
-    response.say({ voice: 'Polly.Joanna' }, text);
+    response.say({ voice: 'alice' }, text);
     return response.toString();
   }
 

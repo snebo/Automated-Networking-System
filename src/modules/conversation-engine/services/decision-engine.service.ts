@@ -52,6 +52,12 @@ export class DecisionEngineService {
     });
   }
 
+  @OnEvent('call.initiated')
+  handleCallInitiated(event: { callSid: string; phoneNumber: string; scriptId: string; goal: string; companyName?: string }) {
+    this.logger.log(`🚀 Call initiated event received for ${event.callSid}`);
+    this.startCallSession(event.callSid, event.phoneNumber, event.goal, event.companyName);
+  }
+
   @OnEvent('ai.start_session')
   handleStartSession(event: { callSid: string; phoneNumber: string; goal: string; companyName?: string; targetPerson?: string }) {
     this.startCallSession(event.callSid, event.phoneNumber, event.goal, event.companyName, event.targetPerson);
@@ -60,6 +66,29 @@ export class DecisionEngineService {
   @OnEvent('ai.session_ended')
   handleSessionEnded(event: { callSid: string }) {
     this.handleCallCompleted(event.callSid);
+  }
+
+  @OnEvent('ai.entering_wait_state')
+  handleEnteringWaitState(event: { callSid: string; action: string; key: string }) {
+    const session = this.activeSessions.get(event.callSid);
+    if (!session) return;
+
+    console.log(`⏳ Entering WAIT state after ${event.action} [${event.key}]`);
+    session.currentState = 'waiting';
+    
+    this.logger.log(`Session ${event.callSid} entering wait state after ${event.action}`);
+  }
+
+  @OnEvent('ai.human_reached')
+  handleHumanReached(event: { callSid: string; transcript: string }) {
+    const session = this.activeSessions.get(event.callSid);
+    if (!session) return;
+
+    console.log(`🎉 Human reached - exiting wait state`);
+    session.currentState = 'listening';
+    session.actionHistory.push(`Reached human: "${event.transcript}"`);
+    
+    this.logger.log(`Session ${event.callSid} reached human, exiting wait state`);
   }
 
   @OnEvent('ivr.menu_detected')
@@ -75,9 +104,23 @@ export class DecisionEngineService {
       return;
     }
 
-    this.logger.log(`\n🤖 AI ANALYZING IVR MENU for call ${event.callSid}:`);
-    this.logger.log(`   Goal: ${session.goal}`);
-    this.logger.log(`   Options detected: ${event.options.length}`);
+    // Don't process IVR menus while waiting for response
+    if (session.currentState === 'waiting') {
+      console.log(`⏸️  Ignoring IVR menu - currently waiting for response to previous action`);
+      this.logger.debug(`Ignoring IVR menu for ${event.callSid} - session in waiting state`);
+      return;
+    }
+
+    // Clean console output for AI decision making
+    console.log('\n🤖 AI ANALYZING IVR MENU');
+    console.log('='.repeat(50));
+    console.log(`📞 Call: ${event.callSid.slice(-8)}`);
+    console.log(`🎯 Goal: ${session.goal}`);
+    console.log(`📋 Available Options:`);
+    event.options.forEach((option, index) => {
+      console.log(`   ${index + 1}. Press [${option.key}] → ${option.description}`);
+    });
+    console.log('='.repeat(50));
     
     session.currentState = 'deciding';
 
@@ -97,12 +140,18 @@ export class DecisionEngineService {
       const decision = await this.openaiService.makeIVRDecision(context);
       session.lastDecision = decision;
 
-      this.logger.log(`\n🎯 AI DECISION MADE:`);
-      this.logger.log(`   ✅ Selected Option: ${decision.selectedOption}`);
-      this.logger.log(`   🧠 Reasoning: ${decision.reasoning}`);
-      this.logger.log(`   💬 Response: "${decision.response}"`);
-      this.logger.log(`   📊 Confidence: ${(decision.confidence * 100).toFixed(1)}%`);
-      this.logger.log(`   🎬 Next Action: ${decision.nextAction}\n`);
+      // Clean console output for AI decision
+      console.log('\n🎯 AI DECISION MADE');
+      console.log('-'.repeat(50));
+      console.log(`✅ Selected: Press [${decision.selectedOption}]`);
+      console.log(`🧠 Reasoning: ${decision.reasoning}`);
+      console.log(`📊 Confidence: ${(decision.confidence * 100).toFixed(1)}%`);
+      console.log(`🎬 Action: ${decision.nextAction}`);
+      console.log('-'.repeat(50));
+      console.log('');
+      
+      // Structured log for monitoring
+      this.logger.log(`AI decision: press ${decision.selectedOption} for ${event.callSid}`);
 
       // Record the action
       session.actionHistory.push(`Selected option ${decision.selectedOption}: ${event.options.find(o => o.key === decision.selectedOption)?.description || 'unknown'}`);

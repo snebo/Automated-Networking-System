@@ -46,7 +46,7 @@ export class OpenAITTSService {
     }
 
     try {
-      const voice = options?.voice || this.configService.get<string>('speech.tts.openai.voice', 'alloy');
+      const voice = options?.voice || this.configService.get<string>('speech.tts.openai.voice', 'fable');
       const speed = options?.speed || this.configService.get<number>('speech.tts.openai.speed', 1.0);
       const model = options?.model || this.configService.get<string>('speech.tts.openai.model', 'tts-1');
 
@@ -91,7 +91,7 @@ export class OpenAITTSService {
     }
 
     try {
-      const voice = options?.voice || this.configService.get<string>('speech.tts.openai.voice', 'alloy');
+      const voice = options?.voice || this.configService.get<string>('speech.tts.openai.voice', 'fable');
       const speed = options?.speed || this.configService.get<number>('speech.tts.openai.speed', 1.0);
       const model = options?.model || this.configService.get<string>('speech.tts.openai.model', 'tts-1');
 

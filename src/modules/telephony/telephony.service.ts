@@ -70,15 +70,22 @@ export class TelephonyService {
 
   async sendDTMF(callSid: string, digits: string): Promise<void> {
     try {
-      this.logger.log(`Sending DTMF digits ${digits} to call ${callSid}`);
       await this.twilioService.sendDTMF(callSid, digits);
+      console.log(`✅ DTMF sent successfully: [${digits}]`);
       
+      // Track DTMF send time for waiting state detection
+      const callData = this.activeCalls.get(callSid);
+      if (callData) {
+        callData.lastDTMFTime = new Date();
+      }
+
       this.eventEmitter.emit('dtmf.sent', {
         callSid,
         digits,
         timestamp: new Date(),
       });
     } catch (error) {
+      console.log(`❌ DTMF send failed: ${error.message}`);
       this.logger.error(`Failed to send DTMF: ${error.message}`, error.stack);
       throw error;
     }
@@ -163,9 +170,10 @@ export class TelephonyService {
 
   @OnEvent('ai.send_dtmf')
   async handleAISendDTMF(event: { callSid: string; digits: string; reasoning: string }) {
-    this.logger.log(`\n🤖 AI requesting DTMF: ${event.digits} for call ${event.callSid}`);
-    this.logger.log(`   Reasoning: ${event.reasoning}`);
+    console.log(`📞 Sending DTMF [${event.digits}] to call ...${event.callSid.slice(-8)}`);
+    console.log(`💭 Reason: ${event.reasoning}`);
     
+    this.logger.log(`Sending DTMF ${event.digits} to ${event.callSid}`);
     await this.sendDTMF(event.callSid, event.digits);
   }
 

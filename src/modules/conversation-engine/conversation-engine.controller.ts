@@ -1,5 +1,6 @@
 import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DecisionEngineService } from './services/decision-engine.service';
 import { HumanConversationService } from './services/human-conversation.service';
 
@@ -9,6 +10,7 @@ export class ConversationEngineController {
   constructor(
     private readonly decisionEngine: DecisionEngineService,
     private readonly humanConversation: HumanConversationService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   @Post('test-human-conversation')
@@ -70,8 +72,14 @@ export class ConversationEngineController {
       timestamp: new Date(),
     };
 
-    // Simulate the STT event
-    await this.humanConversation.handleTranscript(event);
+    // Emit the IVR detection completed event to trigger human conversation processing
+    this.eventEmitter.emit('ivr.detection_completed', {
+      callSid: event.callSid,
+      transcript: event.transcript,
+      ivrDetected: false, // Assume no IVR for simulation
+      confidence: event.confidence,
+      timestamp: event.timestamp,
+    });
 
     return {
       message: 'Human response processed',
@@ -143,9 +151,10 @@ export class ConversationEngineController {
     const greeting = humanGreetings[Math.floor(Math.random() * humanGreetings.length)];
 
     // Simulate the STT event - human detection
-    this.humanConversation.handleTranscript({
+    this.eventEmitter.emit('ivr.detection_completed', {
       callSid,
       transcript: greeting,
+      ivrDetected: false, // Simulate human detection
       confidence: 0.95,
       timestamp: new Date(),
     });
@@ -160,9 +169,10 @@ export class ConversationEngineController {
       
       const response = responses[Math.floor(Math.random() * responses.length)];
       
-      this.humanConversation.handleTranscript({
+      this.eventEmitter.emit('ivr.detection_completed', {
         callSid,
         transcript: response,
+        ivrDetected: false, // Simulate human response
         confidence: 0.90,
         timestamp: new Date(),
       });

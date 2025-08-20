@@ -1,0 +1,321 @@
+{
+  "description": "Simple Test IVR for AI Navigation Testing",
+  "states": [
+    {
+      "name": "Trigger",
+      "type": "trigger",
+      "transitions": [
+        {
+          "event": "incomingCall",
+          "next": "welcome_message"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    },
+    {
+      "name": "welcome_message",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "main_menu"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 110,
+          "y": 140
+        },
+        "loop": 1,
+        "say": "Thank you for calling Test Medical Center."
+      }
+    },
+    {
+      "name": "main_menu",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 1",
+              "arguments": ["{{widgets.main_menu.Digits}}", "1"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "emergency_menu"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 2",
+              "arguments": ["{{widgets.main_menu.Digits}}", "2"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "patient_info"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 9",
+              "arguments": ["{{widgets.main_menu.Digits}}", "9"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "main_menu"
+        },
+        {
+          "event": "timeout",
+          "next": "main_menu"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 110,
+          "y": 250
+        },
+        "loop": 1,
+        "timeout": 10,
+        "finish_on_key": "#",
+        "say": "Press 1 for Emergency Services, Press 2 for Patient Information, or Press 9 to repeat this menu."
+      }
+    },
+    {
+      "name": "emergency_menu",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 1",
+              "arguments": ["{{widgets.emergency_menu.Digits}}", "1"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "er_doctor"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 0",
+              "arguments": ["{{widgets.emergency_menu.Digits}}", "0"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "main_menu"
+        },
+        {
+          "event": "timeout",
+          "next": "emergency_menu"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 300,
+          "y": 350
+        },
+        "loop": 1,
+        "timeout": 10,
+        "finish_on_key": "#",
+        "say": "You have reached Emergency Services. Press 1 to speak with an ER doctor, or Press 0 to return to the main menu."
+      }
+    },
+    {
+      "name": "er_doctor",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "doctor_greeting"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 500,
+          "y": 450
+        },
+        "loop": 1,
+        "say": "Please hold while I connect you to an emergency room doctor."
+      }
+    },
+    {
+      "name": "doctor_greeting",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "listen_for_response"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 500,
+          "y": 550
+        },
+        "loop": 1,
+        "say": "Hello, this is Doctor Martinez from the emergency department. How can I help you today?"
+      }
+    },
+    {
+      "name": "listen_for_response",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "speech",
+          "next": "doctor_response"
+        },
+        {
+          "event": "timeout",
+          "next": "doctor_response"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 500,
+          "y": 650
+        },
+        "loop": 1,
+        "timeout": 15,
+        "say": ""
+      }
+    },
+    {
+      "name": "doctor_response",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "end_call"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 500,
+          "y": 750
+        },
+        "loop": 1,
+        "say": "I understand. My direct contact is extension 4567, and you can email me at dr.martinez at testmedical dot com. I'm available for consultations between 8 AM and 6 PM. Is there anything else you need?"
+      }
+    },
+    {
+      "name": "patient_info",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "scheduler_greeting"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 110,
+          "y": 450
+        },
+        "loop": 1,
+        "say": "Connecting you to patient information."
+      }
+    },
+    {
+      "name": "scheduler_greeting",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "scheduler_listen"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 110,
+          "y": 550
+        },
+        "loop": 1,
+        "say": "Hello, this is Sarah from patient services. How can I assist you today?"
+      }
+    },
+    {
+      "name": "scheduler_listen",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "speech",
+          "next": "scheduler_response"
+        },
+        {
+          "event": "timeout",
+          "next": "scheduler_response"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 110,
+          "y": 650
+        },
+        "loop": 1,
+        "timeout": 15,
+        "say": ""
+      }
+    },
+    {
+      "name": "scheduler_response",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "end_call"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 110,
+          "y": 750
+        },
+        "loop": 1,
+        "say": "For appointments, you can reach our scheduling line at extension 2100, or email appointments at testmedical dot com. We're open Monday through Friday, 7 AM to 7 PM. Would you like me to check any specific department availability?"
+      }
+    },
+    {
+      "name": "end_call",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "hangup"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 350,
+          "y": 850
+        },
+        "loop": 1,
+        "say": "Thank you for calling Test Medical Center. Have a great day!"
+      }
+    },
+    {
+      "name": "hangup",
+      "type": "hangup-call",
+      "transitions": [],
+      "properties": {
+        "offset": {
+          "x": 350,
+          "y": 950
+        }
+      }
+    }
+  ],
+  "initial_state": "Trigger",
+  "flags": {
+    "allow_concurrent_calls": true
+  }
+}

@@ -1,0 +1,540 @@
+{
+  "description": "Test IVR for AI Navigation Testing - Medical Center",
+  "states": [
+    {
+      "name": "Trigger",
+      "type": "trigger",
+      "transitions": [
+        {
+          "event": "incomingCall",
+          "next": "MainMenu"
+        }
+      ],
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    },
+    {
+      "name": "MainMenu",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 1",
+              "arguments": ["{{widgets.MainMenu.Digits}}", "1"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "EmergencyServices"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 2",
+              "arguments": ["{{widgets.MainMenu.Digits}}", "2"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "PatientInfo"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 3",
+              "arguments": ["{{widgets.MainMenu.Digits}}", "3"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "BillingDept"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 9",
+              "arguments": ["{{widgets.MainMenu.Digits}}", "9"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "MainMenu"
+        },
+        {
+          "event": "timeout",
+          "next": "MainMenu"
+        },
+        {
+          "event": "noInput",
+          "next": "MainMenu"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "speech_timeout": "auto",
+        "offset": {
+          "x": 160,
+          "y": 220
+        },
+        "loop": 1,
+        "hints": "",
+        "finish_on_key": "#",
+        "say": "Thank you for calling Test Medical Center. Press 1 for Emergency Services, Press 2 for Patient Information, Press 3 for Billing Department, or Press 9 to repeat this menu.",
+        "language": "en-US",
+        "stop_gather": true,
+        "gather_language": "en",
+        "profanity_filter": "true",
+        "timeout": 8
+      }
+    },
+    {
+      "name": "EmergencyServices",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 1",
+              "arguments": ["{{widgets.EmergencyServices.Digits}}", "1"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "ConnectERDoctor"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 2",
+              "arguments": ["{{widgets.EmergencyServices.Digits}}", "2"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "ERStatus"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 0",
+              "arguments": ["{{widgets.EmergencyServices.Digits}}", "0"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "MainMenu"
+        },
+        {
+          "event": "timeout",
+          "next": "EmergencyServices"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "speech_timeout": "auto",
+        "offset": {
+          "x": 400,
+          "y": 320
+        },
+        "loop": 1,
+        "hints": "",
+        "finish_on_key": "#",
+        "say": "You have reached Emergency Services. Press 1 to speak with an ER doctor, Press 2 for current emergency room status, or Press 0 to return to the main menu.",
+        "language": "en-US",
+        "stop_gather": true,
+        "gather_language": "en",
+        "profanity_filter": "true",
+        "timeout": 8
+      }
+    },
+    {
+      "name": "ConnectERDoctor",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "ERDoctorHuman"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 650,
+          "y": 420
+        },
+        "loop": 1,
+        "say": "Please hold while I connect you to an emergency room doctor."
+      }
+    },
+    {
+      "name": "ERDoctorHuman",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "HumanConversation"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 650,
+          "y": 520
+        },
+        "loop": 1,
+        "say": "Hello, this is Dr. Martinez from the emergency department. How can I help you today?"
+      }
+    },
+    {
+      "name": "HumanConversation",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "speech",
+          "next": "DoctorResponse"
+        },
+        {
+          "event": "timeout",
+          "next": "DoctorResponse"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "speech_timeout": "auto",
+        "offset": {
+          "x": 650,
+          "y": 620
+        },
+        "loop": 1,
+        "hints": "",
+        "finish_on_key": "",
+        "say": "",
+        "language": "en-US",
+        "stop_gather": false,
+        "gather_language": "en",
+        "profanity_filter": "true",
+        "timeout": 15
+      }
+    },
+    {
+      "name": "DoctorResponse",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "EndCallSuccess"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 650,
+          "y": 720
+        },
+        "loop": 1,
+        "say": "I understand. My direct contact information is extension 4567, and you can reach me at dr.martinez at testmedical dot com. I'm typically available for consultations between 8 AM and 6 PM. Is there anything else you need to know?"
+      }
+    },
+    {
+      "name": "PatientInfo",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 1",
+              "arguments": ["{{widgets.PatientInfo.Digits}}", "1"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "ConnectAppointments"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 2",
+              "arguments": ["{{widgets.PatientInfo.Digits}}", "2"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "MedicalRecords"
+        },
+        {
+          "event": "keypress",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 0",
+              "arguments": ["{{widgets.PatientInfo.Digits}}", "0"],
+              "type": "equal_to"
+            }
+          ],
+          "next": "MainMenu"
+        },
+        {
+          "event": "timeout",
+          "next": "PatientInfo"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "speech_timeout": "auto",
+        "offset": {
+          "x": 160,
+          "y": 520
+        },
+        "loop": 1,
+        "hints": "",
+        "finish_on_key": "#",
+        "say": "You have reached Patient Information. Press 1 for appointments, Press 2 for medical records, or Press 0 to return to the main menu.",
+        "language": "en-US",
+        "stop_gather": true,
+        "gather_language": "en",
+        "profanity_filter": "true",
+        "timeout": 8
+      }
+    },
+    {
+      "name": "ConnectAppointments",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "AppointmentHuman"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 400,
+          "y": 620
+        },
+        "loop": 1,
+        "say": "Connecting you to our appointment scheduler."
+      }
+    },
+    {
+      "name": "AppointmentHuman",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "SchedulerResponse"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 400,
+          "y": 720
+        },
+        "loop": 1,
+        "say": "Hello, this is Sarah from the appointment scheduling department. How can I assist you today?"
+      }
+    },
+    {
+      "name": "SchedulerResponse",
+      "type": "gather-input-on-call",
+      "transitions": [
+        {
+          "event": "speech",
+          "next": "SchedulerInfo"
+        },
+        {
+          "event": "timeout",
+          "next": "SchedulerInfo"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "speech_timeout": "auto",
+        "offset": {
+          "x": 400,
+          "y": 820
+        },
+        "loop": 1,
+        "hints": "",
+        "finish_on_key": "",
+        "say": "",
+        "language": "en-US",
+        "stop_gather": false,
+        "gather_language": "en",
+        "profanity_filter": "true",
+        "timeout": 15
+      }
+    },
+    {
+      "name": "SchedulerInfo",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "EndCallSuccess"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 400,
+          "y": 920
+        },
+        "loop": 1,
+        "say": "Certainly! For appointment scheduling, you can reach our main scheduling line at extension 2100, or email us at appointments at testmedical dot com. We're available Monday through Friday from 7 AM to 7 PM. Would you like me to check availability for any specific department?"
+      }
+    },
+    {
+      "name": "ERStatus",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "ReturnToER"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 600,
+          "y": 220
+        },
+        "loop": 1,
+        "say": "Our emergency room is currently open with a wait time of approximately 45 minutes. We have specialists on duty including cardiology, orthopedics, and general emergency medicine."
+      }
+    },
+    {
+      "name": "ReturnToER",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "EmergencyServices"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 600,
+          "y": 320
+        },
+        "loop": 1,
+        "say": "Returning to the emergency services menu."
+      }
+    },
+    {
+      "name": "MedicalRecords",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "ReturnToPatient"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 160,
+          "y": 720
+        },
+        "loop": 1,
+        "say": "For medical records requests, please visit our patient portal at testmedical dot com slash portal, or call our records department at extension 3050. You will need a valid photo ID for in-person requests."
+      }
+    },
+    {
+      "name": "ReturnToPatient",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "PatientInfo"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 160,
+          "y": 820
+        },
+        "loop": 1,
+        "say": "Returning to the patient information menu."
+      }
+    },
+    {
+      "name": "BillingDept",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "ReturnToMain"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 160,
+          "y": 1020
+        },
+        "loop": 1,
+        "say": "You have reached the billing department. Our billing office is currently closed. Office hours are Monday through Friday, 9 AM to 5 PM. For urgent billing matters, please call extension 4000, or email billing at testmedical dot com."
+      }
+    },
+    {
+      "name": "ReturnToMain",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "MainMenu"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 160,
+          "y": 1120
+        },
+        "loop": 1,
+        "say": "Returning to the main menu."
+      }
+    },
+    {
+      "name": "EndCallSuccess",
+      "type": "say-play",
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "HangUp"
+        }
+      ],
+      "properties": {
+        "voice": "Polly.Joanna",
+        "offset": {
+          "x": 650,
+          "y": 1020
+        },
+        "loop": 1,
+        "say": "Thank you for calling Test Medical Center. Have a great day!"
+      }
+    },
+    {
+      "name": "HangUp",
+      "type": "hangup-call",
+      "transitions": [],
+      "properties": {
+        "offset": {
+          "x": 650,
+          "y": 1220
+        }
+      }
+    }
+  ],
+  "initial_state": "Trigger",
+  "flags": {
+    "allow_concurrent_calls": true
+  }
+}

@@ -96,7 +96,7 @@ class FullFlowTester {
         specificGoal: 'Find emergency room doctors contact information',
         onlyBusinessListings: true,
         minRating: 3.0,
-        maxResults: 10
+        limit: 10
       };
 
       console.log('   📋 Search parameters:', JSON.stringify(searchRequest, null, 2));

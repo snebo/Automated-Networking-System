@@ -19,9 +19,12 @@ export class IvrNavigatorService {
   }) {
     const { callSid, decision, session } = event;
     
-    this.logger.log(`\n🎬 EXECUTING AI DECISION for call ${callSid}:`);
-    this.logger.log(`   Action: ${decision.nextAction}`);
-    this.logger.log(`   Option: ${decision.selectedOption}`);
+    console.log('\n🎬 EXECUTING AI DECISION');
+    console.log(`🔧 Action: ${decision.nextAction}`);
+    console.log(`⌨️  Key: ${decision.selectedOption}`);
+    
+    // Structured log for monitoring
+    this.logger.log(`Executing decision: ${decision.nextAction} option ${decision.selectedOption} for ${callSid}`);
 
     switch (decision.nextAction) {
       case 'press_key':
@@ -56,17 +59,8 @@ export class IvrNavigatorService {
   private async handleKeyPress(callSid: string, decision: AIDecision): Promise<void> {
     this.logger.log(`   🔢 Pressing DTMF key: ${decision.selectedOption}`);
     
-    // First, speak the response if provided
-    if (decision.response && decision.response.trim()) {
-      this.eventEmitter.emit('ai.speak', {
-        callSid,
-        text: decision.response,
-        action: 'before_keypress',
-      });
-      
-      // Wait a moment for the speech to complete before pressing key
-      await this.delay(3000);
-    }
+    // Skip automated speech - just press key silently for natural IVR navigation
+    console.log(`🤫 Pressing key silently (no announcement)`);
 
     // Send DTMF tone
     this.eventEmitter.emit('ai.send_dtmf', {
@@ -75,7 +69,14 @@ export class IvrNavigatorService {
       reasoning: decision.reasoning,
     });
 
-    this.logger.log(`   ✅ DTMF key ${decision.selectedOption} sent`);
+    console.log(`✅ Sent DTMF: [${decision.selectedOption}]`);
+    
+    // Notify that we're now waiting for response
+    this.eventEmitter.emit('ai.entering_wait_state', {
+      callSid,
+      action: 'pressed_key',
+      key: decision.selectedOption,
+    });
   }
 
   private async handleSpeak(callSid: string, decision: AIDecision): Promise<void> {

@@ -53,22 +53,27 @@ export class IVRDetectionService {
   handleFinalTranscript(event: { callSid: string; transcript: string; confidence: number; timestamp: Date }) {
     const { callSid, transcript, confidence, timestamp } = event;
     
-    this.logger.log(`\n🎤 STT TRANSCRIPT RECEIVED for call ${callSid}:`);
-    this.logger.log(`   📝 Text: "${transcript}"`);
-    this.logger.log(`   📊 Confidence: ${(confidence * 100).toFixed(1)}%`);
+    // Clean console output for better readability
+    console.log('\n' + '='.repeat(80));
+    console.log(`🎤 TRANSCRIPT | Call: ${callSid.slice(-8)} | Confidence: ${(confidence * 100).toFixed(1)}%`);
+    console.log('='.repeat(80));
+    console.log(`📝 "${transcript}"`);
     
     const detectedMenu = this.detectIVRMenu(callSid, transcript, confidence, timestamp);
     
     if (detectedMenu) {
-      this.logger.log(`\n🎯 IVR MENU DETECTED! Found ${detectedMenu.options.length} options:`);
-      this.logger.log('   =====================================');
+      console.log('\n🎯 IVR MENU DETECTED!');
+      console.log('-'.repeat(50));
       
       detectedMenu.options.forEach((option, index) => {
-        this.logger.log(`   ${index + 1}. Press [${option.key}] → ${option.description}`);
-        this.logger.log(`      Confidence: ${(option.confidence * 100).toFixed(1)}%`);
+        console.log(`${index + 1}. Press [${option.key}] → ${option.description} (${(option.confidence * 100).toFixed(0)}%)`);
       });
       
-      this.logger.log('   =====================================\n');
+      console.log('-'.repeat(50));
+      console.log('');
+      
+      // Structured log for monitoring
+      this.logger.log(`IVR menu detected for ${callSid}: ${detectedMenu.options.length} options`);
       
       this.eventEmitter.emit('ivr.menu_detected', detectedMenu);
       
@@ -82,57 +87,88 @@ export class IVRDetectionService {
           timestamp,
         });
       });
+
+      // Signal that IVR detection is complete with results
+      this.eventEmitter.emit('ivr.detection_completed', {
+        callSid,
+        transcript,
+        ivrDetected: true,
+        confidence,
+        timestamp,
+      });
     } else {
-      this.logger.log(`   ❌ No IVR menu patterns detected in this transcript\n`);
+      console.log('❌ No IVR menu detected');
+      console.log('');
+      this.logger.debug(`No IVR patterns found in transcript for ${callSid}`);
+
+      // Signal that IVR detection is complete without results
+      this.eventEmitter.emit('ivr.detection_completed', {
+        callSid,
+        transcript,
+        ivrDetected: false,
+        confidence,
+        timestamp,
+      });
     }
   }
 
   private detectIVRMenu(callSid: string, transcript: string, confidence: number, timestamp: Date): DetectedMenu | null {
-    const text = transcript.toLowerCase();
+    // Normalize text: convert words to numbers/symbols and clean up
+    const normalizedText = this.normalizeIVRText(transcript.toLowerCase());
+    console.log(`🔍 Normalized: "${normalizedText}"`);
+    
     const options: IVROption[] = [];
     
     // Check if this looks like an IVR menu
-    if (!this.isLikelyIVRMenu(text)) {
+    if (!this.isLikelyIVRMenu(normalizedText)) {
+      console.log('❌ Does not look like IVR menu');
       return null;
     }
 
-    // Extract menu options using different patterns
-    for (const pattern of this.ivrPatterns) {
-      pattern.lastIndex = 0; // Reset regex
-      let match;
-      
-      while ((match = pattern.exec(text)) !== null) {
-        let key: string;
-        let description: string;
-        
-        // Handle different capture group orders based on pattern
-        if (pattern.source.includes('press\\s+(\\d+|\\*|\\#)\\s+for')) {
-          // "press X for Y" pattern
-          key = match[1];
-          description = match[2];
-        } else if (pattern.source.includes('for\\s+([^.,]+?),?\\s+press') || 
-                   pattern.source.includes('to\\s+([^.,]+?),?\\s+press')) {
-          // "for Y, press X" or "to Y, press X" pattern  
-          key = match[2];
-          description = match[1];
-        } else if (pattern.source.includes('dial\\s+(\\d+|\\*|\\#)\\s+for')) {
-          // "dial X for Y" pattern
-          key = match[1];
-          description = match[2];
-        } else {
-          continue;
-        }
+    // Simplified pattern matching for common IVR phrases
+    const ivrMatches = [
+      // "press X for Y" or "press X to Y"
+      ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+(?:for|to)\s+([^,.]+?)(?=\.|,|press|$)/gi),
+      // "for Y press X"
+      ...normalizedText.matchAll(/for\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
+      // "to Y press X" 
+      ...normalizedText.matchAll(/to\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
+    ];
 
-        if (key && description) {
-          const cleanDescription = this.cleanDescription(description);
-          const optionConfidence = this.calculateOptionConfidence(cleanDescription);
-          
-          options.push({
-            key: key.trim(),
-            description: cleanDescription,
-            confidence: Math.min(confidence, optionConfidence),
-          });
-        }
+    console.log(`🔍 Found ${ivrMatches.length} potential matches`);
+
+    for (const match of ivrMatches) {
+      let key: string;
+      let description: string;
+      
+      console.log(`🔍 Match: "${match[0]}" → [1]="${match[1]}" [2]="${match[2]}"`);
+      
+      // Check the actual pattern used based on match structure
+      if (match[0].startsWith('press') && /press\s+[0-9*#]+\s+(?:for|to)/.test(match[0])) {
+        // "press X for/to Y" format: press [key] for/to [description]
+        key = match[1];
+        description = match[2];
+      } else if (/(?:for|to)\s+.+\s+press\s+[0-9*#]+/.test(match[0])) {
+        // "for/to Y press X" format: for/to [description] press [key]
+        key = match[2];
+        description = match[1];
+      } else {
+        // Default fallback
+        key = match[2];
+        description = match[1];
+      }
+
+      if (key && description) {
+        const cleanDescription = this.cleanDescription(description);
+        const optionConfidence = this.calculateOptionConfidence(cleanDescription);
+        
+        console.log(`✅ Found option: key="${key}" desc="${cleanDescription}"`);
+        
+        options.push({
+          key: key.trim(),
+          description: cleanDescription,
+          confidence: Math.min(confidence, optionConfidence),
+        });
       }
     }
 
@@ -145,11 +181,46 @@ export class IVRDetectionService {
         options: uniqueOptions,
         fullText: transcript,
         timestamp,
-        confidence: this.calculateMenuConfidence(uniqueOptions, text),
+        confidence: this.calculateMenuConfidence(uniqueOptions, normalizedText),
       };
     }
 
     return null;
+  }
+
+  private normalizeIVRText(text: string): string {
+    let normalized = text;
+    
+    // Convert number words when they follow "press" or precede menu actions
+    const numberWords: Record<string, string> = {
+      'zero': '0', 'oh': '0',
+      'one': '1',
+      'two': '2', 
+      'three': '3',
+      'four': '4',
+      'five': '5',
+      'six': '6',
+      'seven': '7',
+      'eight': '8',
+      'nine': '9'
+    };
+
+    // Convert number words after "press"
+    for (const [word, digit] of Object.entries(numberWords)) {
+      const regex = new RegExp(`press\\s+${word}\\b`, 'gi');
+      normalized = normalized.replace(regex, `press ${digit}`);
+    }
+
+    // Convert symbol words
+    normalized = normalized.replace(/\bpound(?:\s+key)?\b/gi, '#');
+    normalized = normalized.replace(/\bhash(?:\s+key)?\b/gi, '#');
+    normalized = normalized.replace(/\bstar\b/gi, '*');
+    normalized = normalized.replace(/\basterisk\b/gi, '*');
+
+    // Clean up extra spaces
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+    
+    return normalized;
   }
 
   private isLikelyIVRMenu(text: string): boolean {

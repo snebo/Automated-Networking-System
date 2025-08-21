@@ -19,6 +19,7 @@ import { WebScraperService } from './web-scraper.service';
 import { ScraperQueryDto } from './dto/scraper-query.dto';
 import { BusinessFilterDto } from './dto/business-filter.dto';
 import { AssignScriptDto, BulkCallDto } from './dto/business-script.dto';
+import { UnifiedWorkflowDto, WorkflowExecutionResponse } from './dto/unified-workflow.dto';
 
 @ApiTags('web-scraper')
 @Controller('scraper')
@@ -400,5 +401,46 @@ export class WebScraperController {
   })
   async getAllScripts() {
     return this.scraperService.getAllScripts();
+  }
+
+  // ===== UNIFIED WORKFLOW ENDPOINT =====
+
+  @Post('execute-complete-workflow')
+  @ApiOperation({
+    summary: 'Execute complete business research and calling workflow',
+    description: 'Form-based endpoint that searches for businesses, generates scripts, executes calls, and extracts data - all in one unified workflow'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Workflow initiated successfully',
+    type: () => Object, // WorkflowExecutionResponse
+  })
+  @ApiResponse({ status: 400, description: 'Invalid form data' })
+  @ApiResponse({ status: 500, description: 'Workflow execution failed' })
+  async executeCompleteWorkflow(@Body() workflowData: UnifiedWorkflowDto): Promise<WorkflowExecutionResponse> {
+    this.logger.log(`Starting complete workflow: ${workflowData.industry} in ${workflowData.location}`);
+    this.logger.log(`Target: ${workflowData.targetPerson} | Goal: ${workflowData.callingGoal}`);
+    
+    return await this.scraperService.executeCompleteWorkflow(workflowData);
+  }
+
+  @Get('workflow/:workflowId/status')
+  @ApiOperation({
+    summary: 'Get workflow execution status',
+    description: 'Check the current status and progress of a running workflow'
+  })
+  @ApiParam({ name: 'workflowId', description: 'Workflow ID' })
+  async getWorkflowStatus(@Param('workflowId') workflowId: string) {
+    return this.scraperService.getWorkflowStatus(workflowId);
+  }
+
+  @Get('workflow/:workflowId/results')
+  @ApiOperation({
+    summary: 'Get workflow results and extracted data',
+    description: 'Retrieve all extracted information from completed workflow calls'
+  })
+  @ApiParam({ name: 'workflowId', description: 'Workflow ID' })
+  async getWorkflowResults(@Param('workflowId') workflowId: string) {
+    return this.scraperService.getWorkflowResults(workflowId);
   }
 }

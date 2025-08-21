@@ -3,6 +3,10 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import { ScriptManagerService } from '../script-manager/script-manager.service';
+import { TelephonyService } from '../telephony/telephony.service';
+import { CallManagerService } from '../call-manager/call-manager.service';
+import { InformationExtractionService } from '../information-extraction/information-extraction.service';
+import { UnifiedWorkflowDto, WorkflowExecutionResponse } from './dto/unified-workflow.dto';
 import * as cheerio from 'cheerio';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -18,12 +22,16 @@ export class WebScraperService {
   private readonly requestDelays = new Map<string, number>();
   private readonly maxRetries = 3;
   private readonly baseDelay = 1500; // 1.5 seconds
+  private workflowStatuses = new Map<string, any>();
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly scriptManager: ScriptManagerService,
+    private readonly telephonyService: TelephonyService,
+    private readonly callManager: CallManagerService,
+    private readonly informationExtraction: InformationExtractionService,
   ) {}
 
   async scrapeBusinesses(query: ScraperQuery): Promise<ScrapeResult> {
@@ -900,11 +908,385 @@ export class WebScraperService {
     return { message: 'Not implemented in clean scraper' }; // Placeholder
   }
 
+  // ===== UNIFIED COMPLETE WORKFLOW =====
+
+  async executeCompleteWorkflow(workflowData: UnifiedWorkflowDto): Promise<WorkflowExecutionResponse> {
+    const workflowId = `workflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const startTime = Date.now();
+    
+    this.logger.log(`🚀 Starting complete workflow ${workflowId}`);
+    this.logger.log(`   Industry: ${workflowData.industry} | Location: ${workflowData.location}`);
+    this.logger.log(`   Target: ${workflowData.targetPerson} | Goal: ${workflowData.callingGoal}`);
+    
+    // Initialize workflow status
+    const workflowStatus = {
+      id: workflowId,
+      status: 'scraping' as 'scraping' | 'calling' | 'completed' | 'failed',
+      startTime: new Date(),
+      scrapeResults: { totalFound: 0, businessesWithScripts: 0, readyForCalling: 0 },
+      callingResults: { totalCalls: 0, completed: 0, inProgress: 0, queued: 0, failed: 0 },
+      extractedData: { businessesWithData: 0, totalInformationGathered: 0, successfulCalls: 0 },
+      currentStep: 'Searching for businesses...',
+      progress: 10,
+      businessIds: [] as string[],
+      callIds: [] as string[],
+      config: workflowData,
+      error: undefined as string | undefined,
+      completedAt: undefined as Date | undefined
+    };
+    
+    this.workflowStatuses.set(workflowId, workflowStatus);
+
+    try {
+      // PHASE 1: SCRAPE BUSINESSES
+      this.logger.log(`📊 Phase 1: Scraping businesses...`);
+      workflowStatus.currentStep = 'Scraping businesses...';
+      workflowStatus.progress = 20;
+      
+      const scraperQuery = this.convertToScraperQuery(workflowData);
+      const scrapeResult = await this.scrapeWithIntegratedWorkflow(scraperQuery);
+      
+      workflowStatus.scrapeResults = {
+        totalFound: scrapeResult.summary.totalFound,
+        businessesWithScripts: scrapeResult.summary.withScripts,
+        readyForCalling: scrapeResult.summary.readyForCalling
+      };
+      
+      workflowStatus.businessIds = scrapeResult.businesses.map((b: any) => b.id).filter(Boolean);
+      workflowStatus.progress = 40;
+      workflowStatus.currentStep = 'Businesses scraped, preparing calls...';
+
+      if (scrapeResult.businesses.length === 0) {
+        workflowStatus.status = 'completed';
+        workflowStatus.currentStep = 'No businesses found matching criteria';
+        workflowStatus.progress = 100;
+        return this.buildWorkflowResponse(workflowStatus, startTime);
+      }
+
+      // PHASE 2: START CALLING WORKFLOW
+      if (workflowData.startCallingImmediately !== false) {
+        this.logger.log(`📞 Phase 2: Initiating calls for ${scrapeResult.businesses.length} businesses...`);
+        workflowStatus.status = 'calling';
+        workflowStatus.currentStep = 'Starting calls...';
+        workflowStatus.progress = 50;
+
+        const readyBusinesses = scrapeResult.businesses.filter((b: any) => 
+          b.readyForCalling && b.assignedScript?.id
+        );
+
+        this.logger.log(`🎯 ${readyBusinesses.length} businesses ready for calling`);
+        
+        // Queue calls with proper delays
+        const callPromises = [];
+        let delay = 0;
+        
+        for (const business of readyBusinesses) {
+          const callPromise = this.scheduleBusinessCall(
+            business, 
+            workflowData, 
+            delay,
+            workflowId
+          );
+          callPromises.push(callPromise);
+          delay += (workflowData.callDelay || 30) * 1000; // Convert to milliseconds
+        }
+
+        // Start all calls asynchronously
+        workflowStatus.callingResults.queued = readyBusinesses.length;
+        workflowStatus.progress = 70;
+        workflowStatus.currentStep = `${readyBusinesses.length} calls queued`;
+
+        // Don't wait for all calls to complete, but start them
+        this.processCallsInBackground(callPromises, workflowId);
+      }
+
+      workflowStatus.status = workflowData.startCallingImmediately !== false ? 'calling' : 'completed';
+      workflowStatus.progress = workflowData.startCallingImmediately !== false ? 75 : 100;
+      
+      this.logger.log(`✅ Workflow ${workflowId} initiated successfully`);
+      
+      return this.buildWorkflowResponse(workflowStatus, startTime);
+      
+    } catch (error) {
+      this.logger.error(`❌ Workflow ${workflowId} failed: ${error.message}`, error.stack);
+      workflowStatus.status = 'failed';
+      workflowStatus.currentStep = `Failed: ${error.message}`;
+      workflowStatus.error = error.message;
+      
+      return this.buildWorkflowResponse(workflowStatus, startTime);
+    }
+  }
+
+  private convertToScraperQuery(workflowData: UnifiedWorkflowDto): ScraperQuery {
+    return {
+      industry: workflowData.industry,
+      location: workflowData.location,
+      businessType: workflowData.businessType,
+      keywords: workflowData.keywords,
+      limit: workflowData.maxBusinesses || 20,
+      targetPerson: workflowData.targetPerson,
+      specificGoal: workflowData.callingGoal,
+      hasPhone: workflowData.requirePhone ?? true,
+      requirePhysicalLocation: workflowData.requireAddress,
+      excludeContentTypes: workflowData.excludeContentTypes,
+      priority: workflowData.priority || 'normal'
+    };
+  }
+
+  private async scheduleBusinessCall(
+    business: any, 
+    workflowData: UnifiedWorkflowDto, 
+    delay: number,
+    workflowId: string
+  ): Promise<string> {
+    this.logger.log(`📅 Scheduling call to ${business.name} in ${delay/1000}s`);
+    
+    // Wait for the specified delay
+    if (delay > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    try {
+      // Enhanced goal with caller identity and information to gather
+      let enhancedGoal = workflowData.callingGoal;
+      
+      if (workflowData.callerIdentity) {
+        enhancedGoal = `${workflowData.callerIdentity}: ${enhancedGoal}`;
+      }
+      
+      if (workflowData.informationToGather && workflowData.informationToGather.length > 0) {
+        enhancedGoal += `. Gather: ${workflowData.informationToGather.join(', ')}`;
+      }
+
+      // Initiate the call through telephony service
+      const callSid = await this.telephonyService.initiateCall(
+        business.phoneNumber,
+        business.assignedScript.id,
+        enhancedGoal,
+        business.name
+      );
+
+      // Update workflow status
+      const workflowStatus = this.workflowStatuses.get(workflowId);
+      if (workflowStatus) {
+        workflowStatus.callIds.push(callSid);
+        workflowStatus.callingResults.inProgress++;
+        workflowStatus.callingResults.queued--;
+      }
+
+      this.logger.log(`☎️ Call initiated: ${callSid} to ${business.name}`);
+      return callSid;
+      
+    } catch (error) {
+      this.logger.error(`Failed to initiate call to ${business.name}: ${error.message}`);
+      
+      // Update failed count
+      const workflowStatus = this.workflowStatuses.get(workflowId);
+      if (workflowStatus) {
+        workflowStatus.callingResults.failed++;
+        workflowStatus.callingResults.queued--;
+      }
+      
+      throw error;
+    }
+  }
+
+  private async processCallsInBackground(callPromises: Promise<string>[], workflowId: string): Promise<void> {
+    this.logger.log(`🔄 Processing ${callPromises.length} calls in background for workflow ${workflowId}`);
+    
+    try {
+      await Promise.allSettled(callPromises);
+      
+      // Update final workflow status
+      const workflowStatus = this.workflowStatuses.get(workflowId);
+      if (workflowStatus) {
+        workflowStatus.status = 'completed';
+        workflowStatus.progress = 100;
+        workflowStatus.currentStep = 'All calls completed';
+        workflowStatus.completedAt = new Date();
+        
+        this.logger.log(`✅ All calls completed for workflow ${workflowId}`);
+      }
+    } catch (error) {
+      this.logger.error(`Background call processing failed for workflow ${workflowId}: ${error.message}`);
+    }
+  }
+
+  private buildWorkflowResponse(workflowStatus: any, startTime: number): WorkflowExecutionResponse {
+    const executionTime = Date.now() - startTime;
+    
+    const nextSteps = [];
+    if (workflowStatus.status === 'calling') {
+      nextSteps.push('Calls are being executed in background');
+      nextSteps.push(`Check workflow status: GET /scraper/workflow/${workflowStatus.id}/status`);
+      nextSteps.push(`View results when complete: GET /scraper/workflow/${workflowStatus.id}/results`);
+    } else if (workflowStatus.status === 'completed') {
+      nextSteps.push(`Review extracted data: GET /scraper/workflow/${workflowStatus.id}/results`);
+      nextSteps.push('Analyze call outcomes and information gathered');
+    }
+
+    return {
+      workflowId: workflowStatus.id,
+      status: workflowStatus.status,
+      scrapeResults: workflowStatus.scrapeResults,
+      callingResults: workflowStatus.callingResults,
+      extractedData: workflowStatus.extractedData,
+      estimatedCompletionTime: workflowStatus.status === 'calling' ? 
+        new Date(Date.now() + (workflowStatus.callingResults.queued * (workflowStatus.config?.callDelay || 30) * 1000)) : 
+        undefined,
+      nextSteps
+    };
+  }
+
+  async getWorkflowStatus(workflowId: string): Promise<any> {
+    const status = this.workflowStatuses.get(workflowId);
+    if (!status) {
+      throw new Error(`Workflow ${workflowId} not found`);
+    }
+
+    // Update call statuses if workflow is still running
+    if (status.status === 'calling' && status.callIds.length > 0) {
+      await this.updateCallStatuses(status);
+    }
+
+    return {
+      workflowId,
+      status: status.status,
+      progress: status.progress,
+      currentStep: status.currentStep,
+      startTime: status.startTime,
+      completedAt: status.completedAt,
+      scrapeResults: status.scrapeResults,
+      callingResults: status.callingResults,
+      extractedData: status.extractedData,
+      error: status.error
+    };
+  }
+
+  async getWorkflowResults(workflowId: string): Promise<any> {
+    const status = this.workflowStatuses.get(workflowId);
+    if (!status) {
+      throw new Error(`Workflow ${workflowId} not found`);
+    }
+
+    // Get all businesses from this workflow
+    const businesses = await this.prisma.business.findMany({
+      where: { id: { in: status.businessIds } },
+      include: {
+        assignedScript: true,
+        extractedInformation: {
+          orderBy: { extractedAt: 'desc' },
+          take: 1,
+          include: {
+            entities: true
+          }
+        }
+      }
+    });
+
+    // Get call sessions related to this workflow
+    const callSessions = await this.prisma.callSession.findMany({
+      where: { callSid: { in: status.callIds } },
+      include: {
+        transcript: true,
+        extractedInformation: {
+          include: { entities: true }
+        }
+      }
+    });
+
+    return {
+      workflowId,
+      status: status.status,
+      totalBusinesses: businesses.length,
+      totalCalls: callSessions.length,
+      businesses: businesses.map(business => ({
+        id: business.id,
+        name: business.name,
+        phoneNumber: business.phoneNumber,
+        industry: business.industry,
+        callStatus: business.callStatus,
+        assignedScript: business.assignedScript ? {
+          id: business.assignedScript.id,
+          name: business.assignedScript.name,
+          goal: business.assignedScript.goal
+        } : null,
+        extractedData: business.extractedInformation[0] || null,
+        lastCalled: business.lastCalled,
+        callCount: business.callCount
+      })),
+      callSessions: callSessions.map(call => ({
+        callSid: call.callSid,
+        phoneNumber: call.phoneNumber,
+        status: call.status,
+        duration: call.duration,
+        outcome: call.outcome,
+        extractedInformation: call.extractedInformation,
+        transcriptPreview: call.transcript?.slice(0, 3) || []
+      })),
+      summary: {
+        successfulCalls: callSessions.filter(c => c.status === 'completed').length,
+        businessesWithData: businesses.filter(b => b.extractedInformation.length > 0).length,
+        totalInformationGathered: businesses.reduce((sum, b) => sum + b.extractedInformation.length, 0)
+      }
+    };
+  }
+
+  private async updateCallStatuses(workflowStatus: any): Promise<void> {
+    // Get current status of all active calls
+    const activeCalls = this.telephonyService.getAllActiveCalls();
+    
+    let inProgress = 0;
+    let completed = 0;
+    
+    for (const callSid of workflowStatus.callIds) {
+      const activeCall = activeCalls.find(call => call.callSid === callSid);
+      if (activeCall) {
+        inProgress++;
+      } else {
+        completed++;
+      }
+    }
+    
+    workflowStatus.callingResults.inProgress = inProgress;
+    workflowStatus.callingResults.completed = completed;
+    
+    // Update extracted data count
+    try {
+      const extractedCount = await this.prisma.extractedInformation.count({
+        where: { businessId: { in: workflowStatus.businessIds } }
+      });
+      workflowStatus.extractedData.businessesWithData = extractedCount;
+    } catch (error) {
+      this.logger.warn(`Failed to update extracted data count: ${error.message}`);
+    }
+  }
+
   async getScriptById(scriptId: string): Promise<any> {
-    return null; // Placeholder
+    const script = await this.prisma.script.findUnique({
+      where: { id: scriptId }
+    });
+    
+    if (!script) {
+      throw new Error(`Script ${scriptId} not found`);
+    }
+    
+    return script;
   }
 
   async getAllScripts(): Promise<any[]> {
-    return []; // Placeholder
+    return await this.prisma.script.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        businesses: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true,
+            callStatus: true
+          }
+        }
+      }
+    });
   }
 }

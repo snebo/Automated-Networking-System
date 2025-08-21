@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
+import { ScriptManagerService } from '../script-manager/script-manager.service';
 import * as cheerio from 'cheerio';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -22,6 +23,7 @@ export class WebScraperService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly scriptManager: ScriptManagerService,
   ) {}
 
   async scrapeBusinesses(query: ScraperQuery): Promise<ScrapeResult> {
@@ -728,18 +730,170 @@ export class WebScraperService {
   }
 
   async scrapeWithIntegratedWorkflow(query: ScraperQuery): Promise<any> {
-    // For now, just do regular scraping
-    const result = await this.scrapeBusinesses(query);
+    const startTime = Date.now();
+    this.logger.log(`Starting integrated workflow: scrape + script generation for ${query.businessType || 'businesses'} in ${query.location || 'any location'}`);
+    
+    // Step 1: Perform the scraping using our new system
+    const scrapeResult = await this.scrapeBusinesses(query);
+    
+    if (scrapeResult.businesses.length === 0) {
+      return {
+        scrapeResult,
+        businesses: [],
+        summary: {
+          totalFound: 0,
+          processed: 0,
+          withScripts: 0,
+          workflowEnabled: false,
+          message: 'No businesses found to process'
+        }
+      };
+    }
+
+    this.logger.log(`Found ${scrapeResult.businesses.length} businesses, generating custom scripts...`);
+    
+    // Step 2: Get saved businesses from database (they now have IDs)
+    const savedBusinesses = await this.prisma.business.findMany({
+      where: {
+        OR: scrapeResult.businesses.map(b => ({ website: b.website }))
+      }
+    });
+
+    this.logger.log(`Found ${savedBusinesses.length} saved businesses, generating scripts...`);
+
+    // Step 3: Generate and assign scripts for each business
+    const businessesWithScripts = [];
+    let scriptsGenerated = 0;
+    
+    for (const savedBusiness of savedBusinesses) {
+      // Find corresponding scraped business data
+      const scrapedBusiness = scrapeResult.businesses.find(b => b.website === savedBusiness.website);
+      if (!scrapedBusiness) continue;
+      
+      try {
+
+        // Create script generation request based on business and query
+        const scriptRequest = {
+          businessType: query.businessType || savedBusiness.industry || 'business',
+          industry: savedBusiness.industry || query.businessType || 'general',
+          specificGoal: query.specificGoal || this.generateGoalFromServices(scrapedBusiness),
+          targetPerson: query.targetPerson || this.inferTargetPersonFromIndustry(savedBusiness.industry || undefined),
+          businessServices: savedBusiness.services || [],
+          businessName: savedBusiness.name
+        };
+
+        // Generate tailored script
+        const generatedScript = await this.scriptManager.generateScript(scriptRequest);
+        
+        // Save script to database
+        const savedScript = await this.prisma.script.create({
+          data: {
+            name: generatedScript.name,
+            description: generatedScript.description,
+            goal: generatedScript.goal,
+            context: generatedScript.context,
+            phases: generatedScript.phases as any, // JSON field
+            adaptationRules: generatedScript.adaptationRules as any, // JSON field
+            isActive: true
+          }
+        });
+
+        // Update business with assigned script
+        await this.prisma.business.update({
+          where: { id: savedBusiness.id },
+          data: {
+            assignedScriptId: savedScript.id,
+            customGoal: query.specificGoal
+          }
+        });
+
+        // Combine saved business data with scraped data and script info
+        businessesWithScripts.push({
+          ...scrapedBusiness,
+          id: savedBusiness.id, // Add the database ID
+          assignedScript: {
+            id: savedScript.id,
+            name: savedScript.name,
+            goal: savedScript.goal,
+            targetPerson: generatedScript.targetPerson
+          },
+          workflowEnabled: true,
+          readyForCalling: !!(savedBusiness.phoneNumber && savedScript.id)
+        });
+
+        scriptsGenerated++;
+        this.logger.log(`Generated script "${savedScript.name}" for ${savedBusiness.name}`);
+        
+      } catch (error) {
+        this.logger.warn(`Failed to generate script for ${savedBusiness.name}: ${error.message}`);
+        
+        // Add business without script
+        businessesWithScripts.push({
+          ...(scrapedBusiness || {}),
+          id: savedBusiness.id,
+          name: savedBusiness.name,
+          assignedScript: null,
+          workflowEnabled: false,
+          readyForCalling: false,
+          scriptError: error.message
+        });
+      }
+    }
+
+    const summary = {
+      totalFound: scrapeResult.totalFound,
+      processed: scrapeResult.businesses.length,
+      withScripts: scriptsGenerated,
+      readyForCalling: businessesWithScripts.filter(b => b.readyForCalling).length,
+      workflowEnabled: true,
+      executionTime: Date.now() - startTime,
+      targetPerson: query.targetPerson || 'business representative',
+      specificGoal: query.specificGoal || 'tailored business inquiry'
+    };
+
+    this.logger.log(`Integrated workflow completed: ${summary.withScripts}/${summary.processed} businesses have custom scripts`);
+
     return {
-      scrapeResult: result,
-      businesses: result.businesses,
-      summary: {
-        totalFound: result.totalFound,
-        processed: result.businesses.length,
-        withScripts: 0,
-        workflowEnabled: false
+      scrapeResult,
+      businesses: businessesWithScripts,
+      summary,
+      workflow: {
+        enabled: true,
+        scriptsGenerated: scriptsGenerated,
+        nextSteps: [
+          'Review generated scripts for accuracy',
+          'Initiate calling workflow for businesses with scripts',
+          'Monitor call outcomes and script effectiveness'
+        ]
       }
     };
+  }
+
+  private generateGoalFromServices(business: BusinessInfo): string {
+    if (!business.services || business.services.length === 0) {
+      return 'General business inquiry about services and capabilities';
+    }
+
+    const services = business.services.slice(0, 3).join(', ');
+    return `Inquire about ${services} and discuss potential collaboration`;
+  }
+
+  private inferTargetPersonFromIndustry(industry?: string): string {
+    if (!industry) return 'manager or representative';
+    
+    const industryLower = industry.toLowerCase();
+    
+    if (industryLower.includes('hospital') || industryLower.includes('medical')) {
+      return 'department coordinator';
+    } else if (industryLower.includes('restaurant') || industryLower.includes('food')) {
+      return 'manager';
+    } else if (industryLower.includes('dental')) {
+      return 'office manager';
+    } else if (industryLower.includes('hotel')) {
+      return 'events coordinator';
+    }
+    
+    return 'manager or representative';
   }
 
   async startVerificationWorkflowForBusinesses(businessIds: string[], options: any): Promise<any> {

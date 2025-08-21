@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Research & Calling Workflow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f8fafc;
+            color: #334155;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            color: #1e293b;
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .header p {
+            color: #64748b;
+            font-size: 1.1rem;
+        }
+        
+        .form-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .form-section {
+            margin-bottom: 2rem;
+        }
+        
+        .form-section h2 {
+            color: #1e293b;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #374151;
+        }
+        
+        .form-group .description {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+        
+        .tags-input {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            min-height: 2.5rem;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            align-items: flex-start;
+        }
+        
+        .tag {
+            background: #eff6ff;
+            color: #1d4ed8;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .tag-remove {
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .tag-input {
+            border: none;
+            outline: none;
+            flex: 1;
+            min-width: 100px;
+        }
+        
+        .multi-select {
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .multi-select-option {
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .multi-select-option:hover {
+            background-color: #f3f4f6;
+        }
+        
+        .multi-select-option.selected {
+            background-color: #eff6ff;
+            color: #1d4ed8;
+        }
+        
+        .submit-btn {
+            background: #3b82f6;
+            color: white;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+        
+        .submit-btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        
+        .submit-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+        
+        .loading-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            margin: 1rem 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #3b82f6;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+        
+        .status-updates {
+            text-align: left;
+            margin-top: 1rem;
+        }
+        
+        .status-item {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .results-section {
+            display: none;
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .metric-card {
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        
+        .metric-label {
+            color: #64748b;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+        
+        .business-list {
+            margin-top: 2rem;
+        }
+        
+        .business-item {
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .business-name {
+            font-weight: 600;
+            color: #1e293b;
+        }
+        
+        .business-details {
+            color: #64748b;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+        
+        .view-results-btn {
+            background: #059669;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        
+        .error-message {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Business Research & Calling Workflow</h1>
+            <p>Automatically find businesses, generate custom scripts, execute calls, and extract valuable information</p>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <form id="workflowForm" class="form-card">
+            <!-- Search Criteria -->
+            <div class="form-section">
+                <h2>🔍 Search Criteria</h2>
+                
+                <div class="form-group">
+                    <label for="industry">Industry / Business Category *</label>
+                    <div class="description">What type of businesses are you looking for?</div>
+                    <input type="text" id="industry" name="industry" placeholder="e.g., restaurants, medical clinics, law firms" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="location">Location *</label>
+                    <div class="description">Geographic area to search in</div>
+                    <input type="text" id="location" name="location" placeholder="e.g., New York, NY" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="businessType">Business Subcategory</label>
+                    <div class="description">More specific business type (optional)</div>
+                    <input type="text" id="businessType" name="businessType" placeholder="e.g., italian restaurants, family law attorneys">
+                </div>
+                
+                <div class="form-group">
+                    <label for="keywords">Keywords</label>
+                    <div class="description">Additional keywords to include in search (press Enter to add)</div>
+                    <div class="tags-input" id="keywordsContainer">
+                        <input type="text" class="tag-input" id="keywordInput" placeholder="Type keyword and press Enter">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="maxBusinesses">Maximum Businesses to Find</label>
+                    <div class="description">How many businesses should we search for? (1-100)</div>
+                    <input type="number" id="maxBusinesses" name="maxBusinesses" min="1" max="100" value="20">
+                </div>
+            </div>
+
+            <!-- Filtering Options -->
+            <div class="form-section">
+                <h2>🔧 Filtering Options</h2>
+                
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="requirePhone" name="requirePhone" checked>
+                        <label for="requirePhone">Only include businesses with phone numbers</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="requireAddress" name="requireAddress">
+                        <label for="requireAddress">Only include businesses with physical addresses</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Content Types to Exclude</label>
+                    <div class="description">Select content types to filter out from search results</div>
+                    <div class="multi-select" id="excludeContentTypes">
+                        <div class="multi-select-option" data-value="blog_articles">Blog Articles & Guides</div>
+                        <div class="multi-select-option" data-value="news_articles">News Articles</div>
+                        <div class="multi-select-option" data-value="social_media">Social Media Profiles</div>
+                        <div class="multi-select-option" data-value="directories">Generic Directory Listings</div>
+                        <div class="multi-select-option" data-value="reviews_only">Review-only Content</div>
+                        <div class="multi-select-option" data-value="top_lists">Top/Best Lists</div>
+                        <div class="multi-select-option" data-value="generic_info">Generic Information Pages</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calling Goals & Target -->
+            <div class="form-section">
+                <h2>🎯 Calling Goals & Target</h2>
+                
+                <div class="form-group">
+                    <label for="targetPerson">Target Person *</label>
+                    <div class="description">Who should we ask to speak with during calls?</div>
+                    <input type="text" id="targetPerson" name="targetPerson" placeholder="e.g., manager, owner, director" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="callingGoal">Calling Goal *</label>
+                    <div class="description">What is the primary purpose of these calls?</div>
+                    <textarea id="callingGoal" name="callingGoal" placeholder="e.g., Discuss catering services for corporate events" required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="informationToGather">Information to Gather</label>
+                    <div class="description">Specific information you want to collect (press Enter to add)</div>
+                    <div class="tags-input" id="informationContainer">
+                        <input type="text" class="tag-input" id="informationInput" placeholder="Type information type and press Enter">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Execution Settings -->
+            <div class="form-section">
+                <h2>⚙️ Execution Settings</h2>
+                
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="startCallingImmediately" name="startCallingImmediately" checked>
+                        <label for="startCallingImmediately">Start calling immediately after scraping</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="callDelay">Delay Between Calls (seconds)</label>
+                    <div class="description">Time to wait between calls (10-300 seconds)</div>
+                    <input type="number" id="callDelay" name="callDelay" min="10" max="300" value="30">
+                </div>
+                
+                <div class="form-group">
+                    <label for="maxConcurrentCalls">Maximum Concurrent Calls</label>
+                    <div class="description">How many calls to run simultaneously (1-5)</div>
+                    <input type="number" id="maxConcurrentCalls" name="maxConcurrentCalls" min="1" max="5" value="1">
+                </div>
+                
+                <div class="form-group">
+                    <label for="priority">Priority Level</label>
+                    <div class="description">Workflow priority in the system</div>
+                    <select id="priority" name="priority">
+                        <option value="low">Low</option>
+                        <option value="normal" selected>Normal</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Contact Preferences -->
+            <div class="form-section">
+                <h2>👤 Contact Preferences</h2>
+                
+                <div class="form-group">
+                    <label for="callerIdentity">Your Name/Company</label>
+                    <div class="description">How should we introduce you during calls?</div>
+                    <input type="text" id="callerIdentity" name="callerIdentity" placeholder="e.g., John Smith from ABC Solutions">
+                </div>
+                
+                <div class="form-group">
+                    <label for="contactInfo">Your Contact Information</label>
+                    <div class="description">Contact info to share if requested</div>
+                    <input type="text" id="contactInfo" name="contactInfo" placeholder="e.g., john@company.com or (555) 123-4567">
+                </div>
+            </div>
+
+            <!-- Notification Settings -->
+            <div class="form-section">
+                <h2>🔔 Notification Settings</h2>
+                
+                <div class="form-group">
+                    <label for="notificationEmail">Notification Email</label>
+                    <div class="description">Email to notify when workflow completes</div>
+                    <input type="email" id="notificationEmail" name="notificationEmail" placeholder="your.email@company.com">
+                </div>
+                
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="sendProgressUpdates" name="sendProgressUpdates">
+                        <label for="sendProgressUpdates">Send progress updates during execution</label>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn">🚀 Start Workflow</button>
+        </form>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <h2 id="loadingTitle">Initializing Workflow...</h2>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="loadingStatus">Setting up your business research workflow...</p>
+                <div class="status-updates" id="statusUpdates"></div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <h2>📊 Workflow Results</h2>
+            <div class="results-grid" id="resultsGrid"></div>
+            <div class="business-list" id="businessList"></div>
+            <button class="view-results-btn" id="viewDetailedResults">View Detailed Results</button>
+        </div>
+    </div>
+
+    <script>
+        // Form state
+        const keywords = [];
+        const informationToGather = [];
+        const excludeContentTypes = [];
+        let currentWorkflowId = null;
+        let statusCheckInterval = null;
+
+        // Initialize form
+        document.addEventListener('DOMContentLoaded', function() {
+            setupTagInputs();
+            setupMultiSelect();
+            setupFormSubmission();
+        });
+
+        // Setup tag inputs for keywords and information gathering
+        function setupTagInputs() {
+            setupTagInput('keywordInput', 'keywordsContainer', keywords);
+            setupTagInput('informationInput', 'informationContainer', informationToGather);
+        }
+
+        function setupTagInput(inputId, containerId, array) {
+            const input = document.getElementById(inputId);
+            const container = document.getElementById(containerId);
+
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const value = input.value.trim();
+                    if (value && !array.includes(value)) {
+                        array.push(value);
+                        addTag(container, value, array);
+                        input.value = '';
+                    }
+                }
+            });
+        }
+
+        function addTag(container, value, array) {
+            const tag = document.createElement('div');
+            tag.className = 'tag';
+            tag.innerHTML = `${value} <span class="tag-remove" onclick="removeTag(this, '${value}', ${JSON.stringify(array)})">&times;</span>`;
+            container.insertBefore(tag, container.lastElementChild);
+        }
+
+        function removeTag(element, value, array) {
+            const index = array.indexOf(value);
+            if (index > -1) {
+                array.splice(index, 1);
+            }
+            element.parentElement.remove();
+        }
+
+        // Setup multi-select for content types
+        function setupMultiSelect() {
+            const options = document.querySelectorAll('.multi-select-option');
+            options.forEach(option => {
+                option.addEventListener('click', function() {
+                    const value = this.dataset.value;
+                    if (this.classList.contains('selected')) {
+                        this.classList.remove('selected');
+                        const index = excludeContentTypes.indexOf(value);
+                        if (index > -1) excludeContentTypes.splice(index, 1);
+                    } else {
+                        this.classList.add('selected');
+                        excludeContentTypes.push(value);
+                    }
+                });
+            });
+        }
+
+        // Setup form submission
+        function setupFormSubmission() {
+            const form = document.getElementById('workflowForm');
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                submitWorkflow();
+            });
+        }
+
+        async function submitWorkflow() {
+            try {
+                showError('');
+                showLoading(true);
+                
+                const formData = new FormData(document.getElementById('workflowForm'));
+                const data = {
+                    industry: formData.get('industry'),
+                    location: formData.get('location'),
+                    businessType: formData.get('businessType') || undefined,
+                    keywords: keywords.length > 0 ? keywords : undefined,
+                    maxBusinesses: parseInt(formData.get('maxBusinesses')) || 20,
+                    requirePhone: formData.get('requirePhone') === 'on',
+                    requireAddress: formData.get('requireAddress') === 'on',
+                    excludeContentTypes: excludeContentTypes.length > 0 ? excludeContentTypes : undefined,
+                    targetPerson: formData.get('targetPerson'),
+                    callingGoal: formData.get('callingGoal'),
+                    informationToGather: informationToGather.length > 0 ? informationToGather : undefined,
+                    startCallingImmediately: formData.get('startCallingImmediately') === 'on',
+                    callDelay: parseInt(formData.get('callDelay')) || 30,
+                    maxConcurrentCalls: parseInt(formData.get('maxConcurrentCalls')) || 1,
+                    priority: formData.get('priority') || 'normal',
+                    callerIdentity: formData.get('callerIdentity') || undefined,
+                    contactInfo: formData.get('contactInfo') || undefined,
+                    notificationEmail: formData.get('notificationEmail') || undefined,
+                    sendProgressUpdates: formData.get('sendProgressUpdates') === 'on'
+                };
+
+                // Remove undefined values
+                Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
+
+                const response = await fetch('/scraper/execute-complete-workflow', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || 'Failed to start workflow');
+                }
+
+                currentWorkflowId = result.workflowId;
+                startStatusChecking();
+
+            } catch (error) {
+                console.error('Error submitting workflow:', error);
+                showError(error.message || 'Failed to start workflow. Please try again.');
+                showLoading(false);
+            }
+        }
+
+        function startStatusChecking() {
+            updateLoadingStatus('Workflow started! Monitoring progress...');
+            updateProgress(10);
+            
+            statusCheckInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/scraper/workflow/${currentWorkflowId}/status`);
+                    const status = await response.json();
+                    
+                    updateWorkflowStatus(status);
+                    
+                    if (status.status === 'completed' || status.status === 'failed') {
+                        clearInterval(statusCheckInterval);
+                        if (status.status === 'completed') {
+                            await loadFinalResults();
+                        } else {
+                            showError('Workflow failed. Please check the logs or try again.');
+                            showLoading(false);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking status:', error);
+                }
+            }, 5000); // Check every 5 seconds
+        }
+
+        function updateWorkflowStatus(status) {
+            const progressMap = {
+                'initiated': 5,
+                'scraping': 25,
+                'calling': 70,
+                'completed': 100,
+                'failed': 0
+            };
+
+            const progress = progressMap[status.status] || 0;
+            updateProgress(progress);
+
+            const statusMessages = {
+                'initiated': 'Starting workflow...',
+                'scraping': 'Searching for businesses...',
+                'calling': 'Making calls and gathering information...',
+                'completed': 'Workflow completed successfully!',
+                'failed': 'Workflow failed'
+            };
+
+            updateLoadingStatus(statusMessages[status.status] || 'Processing...');
+
+            // Add status update
+            if (status.currentStep) {
+                addStatusUpdate(status.currentStep);
+            }
+        }
+
+        async function loadFinalResults() {
+            try {
+                const response = await fetch(`/scraper/workflow/${currentWorkflowId}/results`);
+                const results = await response.json();
+                
+                showResults(results);
+                showLoading(false);
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+                showError('Failed to load results. Please try refreshing the page.');
+                showLoading(false);
+            }
+        }
+
+        function showResults(results) {
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsGrid = document.getElementById('resultsGrid');
+            const businessList = document.getElementById('businessList');
+
+            // Create metric cards
+            resultsGrid.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-value">${results.totalBusinesses || 0}</div>
+                    <div class="metric-label">Total Businesses</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${results.totalCalls || 0}</div>
+                    <div class="metric-label">Total Calls</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${results.summary?.successfulCalls || 0}</div>
+                    <div class="metric-label">Successful Calls</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${results.summary?.businessesWithData || 0}</div>
+                    <div class="metric-label">Data Collected</div>
+                </div>
+            `;
+
+            // Show business list
+            if (results.businesses && results.businesses.length > 0) {
+                businessList.innerHTML = '<h3>📞 Called Businesses</h3>' + 
+                    results.businesses.map(business => `
+                        <div class="business-item">
+                            <div class="business-name">${business.name}</div>
+                            <div class="business-details">
+                                📞 ${business.phoneNumber} | 
+                                Status: ${business.callStatus} | 
+                                ${business.extractedData ? 'Data collected' : 'No data'}
+                            </div>
+                        </div>
+                    `).join('');
+            }
+
+            resultsSection.style.display = 'block';
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').style.display = show ? 'block' : 'none';
+        }
+
+        function updateLoadingStatus(message) {
+            document.getElementById('loadingStatus').textContent = message;
+        }
+
+        function updateProgress(percent) {
+            document.getElementById('progressFill').style.width = percent + '%';
+        }
+
+        function addStatusUpdate(message) {
+            const statusUpdates = document.getElementById('statusUpdates');
+            const item = document.createElement('div');
+            item.className = 'status-item';
+            item.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            statusUpdates.appendChild(item);
+            statusUpdates.scrollTop = statusUpdates.scrollHeight;
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            if (message) {
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+            } else {
+                errorElement.style.display = 'none';
+            }
+        }
+
+        // Detailed results button
+        document.getElementById('viewDetailedResults').addEventListener('click', function() {
+            if (currentWorkflowId) {
+                window.open(`/scraper/workflow/${currentWorkflowId}/results`, '_blank');
+            }
+        });
+    </script>
+</body>
+</html>

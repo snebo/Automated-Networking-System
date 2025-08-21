@@ -22,10 +22,11 @@ lerna-debug.log*
 
 # Environment variables
 .env
+.env.*
 .env.local
-.env.dev*
+.env.development
+.env.production
 .env.test.local
-.env.prod*
 
 # Logs
 logs/

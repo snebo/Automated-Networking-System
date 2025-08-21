@@ -18,18 +18,18 @@ interface DetectedMenu {
 @Injectable()
 export class IVRDetectionService {
   private readonly logger = new Logger(IVRDetectionService.name);
-  
+
   // Common IVR patterns to detect
   private readonly ivrPatterns = [
     // Standard menu patterns - "press X for Y"
     /press\s+(\d+|\*|\#)\s+for\s+([^.,]+?)(?=\.|\,|press|to\s+\w+|\s*$)/gi,
-    // "for X, press Y" 
+    // "for X, press Y"
     /for\s+([^.,]+?),?\s+press\s+(\d+|\*|\#)/gi,
     // "to X, press Y"
     /to\s+([^.,]+?),?\s+press\s+(\d+|\*|\#)/gi,
     // "dial X for Y"
     /dial\s+(\d+|\*|\#)\s+for\s+([^.,]+?)(?=\.|\,|dial|press|\s*$)/gi,
-    
+
     // Menu confirmation patterns
     /you\s+have\s+reached/i,
     /thank\s+you\s+for\s+calling/i,
@@ -50,35 +50,63 @@ export class IVRDetectionService {
   constructor(private readonly eventEmitter: EventEmitter2) {}
 
   @OnEvent('stt.final')
-  handleFinalTranscript(event: { callSid: string; transcript: string; confidence: number; timestamp: Date }) {
+  handleFinalTranscript(event: {
+    callSid: string;
+    transcript: string;
+    confidence: number;
+    timestamp: Date;
+  }) {
     const { callSid, transcript, confidence, timestamp } = event;
-    
+
     // Clean console output for better readability
     console.log('\n' + '='.repeat(80));
-    console.log(`🎤 TRANSCRIPT | Call: ${callSid.slice(-8)} | Confidence: ${(confidence * 100).toFixed(1)}%`);
+    console.log(
+      `🎤 TRANSCRIPT | Call: ${callSid.slice(-8)} | Confidence: ${(confidence * 100).toFixed(1)}%`,
+    );
     console.log('='.repeat(80));
     console.log(`📝 "${transcript}"`);
-    
+
+    // First check if this is a voicemail prompt
+    if (this.isVoicemailPrompt(transcript)) {
+      console.log('\n📬 VOICEMAIL DETECTED!');
+      console.log('-'.repeat(50));
+      console.log('System is asking to leave a voicemail message');
+      console.log('-'.repeat(50));
+
+      this.logger.log(`Voicemail detected for ${callSid}`);
+
+      this.eventEmitter.emit('ivr.voicemail_detected', {
+        callSid,
+        transcript,
+        confidence,
+        timestamp,
+      });
+
+      return; // Don't process as regular IVR menu
+    }
+
     const detectedMenu = this.detectIVRMenu(callSid, transcript, confidence, timestamp);
-    
+
     if (detectedMenu) {
       console.log('\n🎯 IVR MENU DETECTED!');
       console.log('-'.repeat(50));
-      
+
       detectedMenu.options.forEach((option, index) => {
-        console.log(`${index + 1}. Press [${option.key}] → ${option.description} (${(option.confidence * 100).toFixed(0)}%)`);
+        console.log(
+          `${index + 1}. Press [${option.key}] → ${option.description} (${(option.confidence * 100).toFixed(0)}%)`,
+        );
       });
-      
+
       console.log('-'.repeat(50));
       console.log('');
-      
+
       // Structured log for monitoring
       this.logger.log(`IVR menu detected for ${callSid}: ${detectedMenu.options.length} options`);
-      
+
       this.eventEmitter.emit('ivr.menu_detected', detectedMenu);
-      
+
       // Emit each option separately for easier processing
-      detectedMenu.options.forEach(option => {
+      detectedMenu.options.forEach((option) => {
         this.eventEmitter.emit('ivr.option_detected', {
           callSid,
           key: option.key,
@@ -112,13 +140,18 @@ export class IVRDetectionService {
     }
   }
 
-  private detectIVRMenu(callSid: string, transcript: string, confidence: number, timestamp: Date): DetectedMenu | null {
+  private detectIVRMenu(
+    callSid: string,
+    transcript: string,
+    confidence: number,
+    timestamp: Date,
+  ): DetectedMenu | null {
     // Normalize text: convert words to numbers/symbols and clean up
     const normalizedText = this.normalizeIVRText(transcript.toLowerCase());
     console.log(`🔍 Normalized: "${normalizedText}"`);
-    
+
     const options: IVROption[] = [];
-    
+
     // Check if this looks like an IVR menu
     if (!this.isLikelyIVRMenu(normalizedText)) {
       console.log('❌ Does not look like IVR menu');
@@ -131,7 +164,7 @@ export class IVRDetectionService {
       ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+(?:for|to)\s+([^,.]+?)(?=\.|,|press|$)/gi),
       // "for Y press X"
       ...normalizedText.matchAll(/for\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
-      // "to Y press X" 
+      // "to Y press X"
       ...normalizedText.matchAll(/to\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
     ];
 
@@ -140,9 +173,9 @@ export class IVRDetectionService {
     for (const match of ivrMatches) {
       let key: string;
       let description: string;
-      
+
       console.log(`🔍 Match: "${match[0]}" → [1]="${match[1]}" [2]="${match[2]}"`);
-      
+
       // Check the actual pattern used based on match structure
       if (match[0].startsWith('press') && /press\s+[0-9*#]+\s+(?:for|to)/.test(match[0])) {
         // "press X for/to Y" format: press [key] for/to [description]
@@ -161,9 +194,9 @@ export class IVRDetectionService {
       if (key && description) {
         const cleanDescription = this.cleanDescription(description);
         const optionConfidence = this.calculateOptionConfidence(cleanDescription);
-        
+
         console.log(`✅ Found option: key="${key}" desc="${cleanDescription}"`);
-        
+
         options.push({
           key: key.trim(),
           description: cleanDescription,
@@ -175,7 +208,7 @@ export class IVRDetectionService {
     if (options.length > 0) {
       // Remove duplicates
       const uniqueOptions = this.deduplicateOptions(options);
-      
+
       return {
         callSid,
         options: uniqueOptions,
@@ -188,21 +221,56 @@ export class IVRDetectionService {
     return null;
   }
 
+  private isVoicemailPrompt(transcript: string): boolean {
+    const voicemailKeywords = [
+      'leave a message',
+      'leave your message',
+      'record your message',
+      'voicemail',
+      'voice mail',
+      'message after',
+      'unavailable',
+      'not available to take your call',
+      'unable to take your call',
+      'please state your name',
+      'clearly state your name',
+      'leave a callback number',
+      'leave your name and number',
+      'we will return your call',
+      'call you back',
+      'someone will return your call',
+    ];
+
+    const lowerTranscript = transcript.toLowerCase();
+
+    // Check for multiple voicemail indicators
+    let matches = 0;
+    for (const keyword of voicemailKeywords) {
+      if (lowerTranscript.includes(keyword)) {
+        matches++;
+      }
+    }
+
+    // If we have 2 or more voicemail indicators, it's likely a voicemail
+    return matches >= 2;
+  }
+
   private normalizeIVRText(text: string): string {
     let normalized = text;
-    
+
     // Convert number words when they follow "press" or precede menu actions
     const numberWords: Record<string, string> = {
-      'zero': '0', 'oh': '0',
-      'one': '1',
-      'two': '2', 
-      'three': '3',
-      'four': '4',
-      'five': '5',
-      'six': '6',
-      'seven': '7',
-      'eight': '8',
-      'nine': '9'
+      zero: '0',
+      oh: '0',
+      one: '1',
+      two: '2',
+      three: '3',
+      four: '4',
+      five: '5',
+      six: '6',
+      seven: '7',
+      eight: '8',
+      nine: '9',
     };
 
     // Convert number words after "press"
@@ -219,23 +287,30 @@ export class IVRDetectionService {
 
     // Clean up extra spaces
     normalized = normalized.replace(/\s+/g, ' ').trim();
-    
+
     return normalized;
   }
 
   private isLikelyIVRMenu(text: string): boolean {
     // Check for common IVR indicators
     const indicators = [
-      'press', 'dial', 'enter', 'select',
-      'for', 'menu', 'options', 'department',
-      'representative', 'operator'
+      'press',
+      'dial',
+      'enter',
+      'select',
+      'for',
+      'menu',
+      'options',
+      'department',
+      'representative',
+      'operator',
     ];
-    
-    const indicatorCount = indicators.filter(indicator => text.includes(indicator)).length;
-    
+
+    const indicatorCount = indicators.filter((indicator) => text.includes(indicator)).length;
+
     // Also check for number patterns
     const hasNumbers = /\b\d+\b/.test(text);
-    
+
     return indicatorCount >= 2 || (indicatorCount >= 1 && hasNumbers);
   }
 
@@ -249,7 +324,7 @@ export class IVRDetectionService {
 
   private calculateOptionConfidence(description: string): number {
     let confidence = 0.5; // Base confidence
-    
+
     // Increase confidence for known department keywords
     for (const [category, keywords] of Object.entries(this.departmentKeywords)) {
       for (const keyword of keywords) {
@@ -259,7 +334,7 @@ export class IVRDetectionService {
         }
       }
     }
-    
+
     // Common business terms
     const businessTerms = ['customer', 'service', 'information', 'hours', 'location'];
     for (const term of businessTerms) {
@@ -267,28 +342,29 @@ export class IVRDetectionService {
         confidence += 0.1;
       }
     }
-    
+
     return Math.min(confidence, 1.0);
   }
 
   private calculateMenuConfidence(options: IVROption[], text: string): number {
     if (options.length === 0) return 0;
-    
-    const avgOptionConfidence = options.reduce((sum, opt) => sum + opt.confidence, 0) / options.length;
-    
+
+    const avgOptionConfidence =
+      options.reduce((sum, opt) => sum + opt.confidence, 0) / options.length;
+
     // Bonus for multiple options
     const optionCountBonus = Math.min(options.length * 0.1, 0.3);
-    
+
     // Bonus for standard IVR language
     const standardPhrases = ['thank you for calling', 'please listen carefully', 'menu options'];
-    const phraseBonus = standardPhrases.some(phrase => text.includes(phrase)) ? 0.2 : 0;
-    
+    const phraseBonus = standardPhrases.some((phrase) => text.includes(phrase)) ? 0.2 : 0;
+
     return Math.min(avgOptionConfidence + optionCountBonus + phraseBonus, 1.0);
   }
 
   private deduplicateOptions(options: IVROption[]): IVROption[] {
     const seen = new Set<string>();
-    return options.filter(option => {
+    return options.filter((option) => {
       const key = option.key + ':' + option.description;
       if (seen.has(key)) {
         return false;
@@ -301,25 +377,25 @@ export class IVRDetectionService {
   // Method to suggest which option to select based on a goal
   suggestOption(options: IVROption[], goal: string): IVROption | null {
     const goalLower = goal.toLowerCase();
-    
+
     // Direct keyword matching
     for (const option of options) {
       if (option.description.includes(goalLower)) {
         return option;
       }
     }
-    
+
     // Category-based matching
     for (const [category, keywords] of Object.entries(this.departmentKeywords)) {
-      if (keywords.some(keyword => goalLower.includes(keyword))) {
+      if (keywords.some((keyword) => goalLower.includes(keyword))) {
         for (const option of options) {
-          if (keywords.some(keyword => option.description.includes(keyword))) {
+          if (keywords.some((keyword) => option.description.includes(keyword))) {
             return option;
           }
         }
       }
     }
-    
+
     return null;
   }
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import { OpenAITTSService } from './openai-tts.service';
 import { TwilioService } from '../../telephony/twilio.service';
 import { ConfigService } from '@nestjs/config';
@@ -9,6 +9,7 @@ interface TTSRequest {
   text: string;
   priority: 'low' | 'medium' | 'high';
   voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+  context?: string;
   timestamp: Date;
 }
 
@@ -28,7 +29,20 @@ export class TTSHandlerService {
     private readonly openaiTTS: OpenAITTSService,
     private readonly twilioService: TwilioService,
     private readonly configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  @OnEvent('tts.generate')
+  async handleGenerateRequest(event: {
+    callSid: string;
+    text: string;
+    priority?: 'low' | 'medium' | 'high';
+    voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+    context?: string;
+  }) {
+    // Forward to speak handler
+    await this.handleSpeakRequest(event);
+  }
 
   @OnEvent('tts.speak')
   async handleSpeakRequest(event: {
@@ -36,6 +50,7 @@ export class TTSHandlerService {
     text: string;
     priority?: 'low' | 'medium' | 'high';
     voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+    context?: string;
   }) {
     try {
       const request: TTSRequest = {
@@ -43,6 +58,7 @@ export class TTSHandlerService {
         text: event.text,
         priority: event.priority || 'medium',
         voice: event.voice,
+        context: event.context,
         timestamp: new Date(),
       };
 
@@ -102,6 +118,13 @@ export class TTSHandlerService {
       await this.playAudioOnCall(request.callSid, Buffer.from(''), request.text);
 
       this.logger.log(`🔊 Speech playback completed for call ${request.callSid}`);
+      
+      // Emit completion event with context
+      this.eventEmitter.emit('tts.completed', {
+        callSid: request.callSid,
+        context: request.context || 'general',
+        timestamp: new Date(),
+      });
 
     } catch (error) {
       this.logger.error(`Failed to generate/play speech for call ${request.callSid}: ${error.message}`);

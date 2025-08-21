@@ -45,6 +45,217 @@ export class HumanConversationService {
     this.logger.log(`Started simple human session for call ${event.callSid} - Goal: ${event.goal}`);
   }
 
+  @OnEvent('ivr.voicemail_detected')
+  async handleVoicemailDetected(event: {
+    callSid: string;
+    transcript: string;
+    confidence: number;
+    timestamp: Date;
+  }) {
+    const session = this.activeSessions.get(event.callSid);
+    if (!session) return;
+
+    this.logger.log(`📬 Voicemail detected for call ${event.callSid}`);
+    
+    // Generate a professional voicemail message based on the goal
+    const voicemailMessage = this.generateVoicemailMessage(session);
+    
+    // Save the voicemail status to database
+    await this.saveVoicemailStatus(session, voicemailMessage);
+    
+    // Mark the voicemail message in session for tracking
+    session.hasAskedQuestion = true;
+    session.questionAsked = 'voicemail';
+    session.humanResponse = voicemailMessage;
+    
+    // Speak the voicemail message
+    this.eventEmitter.emit('tts.generate', {
+      callSid: event.callSid,
+      text: voicemailMessage,
+      priority: 'high',
+      context: 'voicemail',
+    });
+    
+    // Don't schedule hangup here - wait for TTS completion event
+  }
+  
+  @OnEvent('tts.completed')
+  async handleTTSCompleted(event: {
+    callSid: string;
+    context?: string;
+  }) {
+    // If this was a voicemail message, hang up shortly after
+    if (event.context === 'voicemail') {
+      const session = this.activeSessions.get(event.callSid);
+      if (session && session.questionAsked === 'voicemail') {
+        // Wait 2 seconds after TTS completes, then hang up
+        setTimeout(() => {
+          this.logger.log(`📞 Hanging up after voicemail completion for ${event.callSid}`);
+          this.eventEmitter.emit('ai.hangup', {
+            callSid: event.callSid,
+            reason: 'Voicemail message completed'
+          });
+        }, 2000);
+      }
+    }
+  }
+  
+  private async saveVoicemailStatus(session: SimpleHumanSession, voicemailMessage: string): Promise<void> {
+    this.logger.log(`💾 Saving voicemail status for call ${session.callSid}`);
+    
+    try {
+      // Find the call session
+      const callSession = await this.prisma.callSession.findUnique({
+        where: { callSid: session.callSid },
+      });
+      
+      if (callSession) {
+        // Update call outcome to indicate voicemail was left
+        await this.prisma.callSession.update({
+          where: { id: callSession.id },
+          data: {
+            outcome: {
+              status: 'voicemail_left',
+              message: voicemailMessage,
+              timestamp: new Date(),
+            }
+          }
+        });
+        
+        // Store the voicemail message as a transcript
+        await this.prisma.transcript.create({
+          data: {
+            callId: callSession.id,
+            timestamp: new Date(),
+            speaker: 'agent',
+            text: `[VOICEMAIL] ${voicemailMessage}`,
+            confidence: 1.0,
+            metadata: {
+              type: 'voicemail',
+              goal: session.goal,
+            }
+          }
+        });
+        
+        // Update business call status if available
+        const business = await this.prisma.business.findFirst({
+          where: { phoneNumber: callSession.phoneNumber }
+        });
+        
+        if (business) {
+          await this.prisma.business.update({
+            where: { id: business.id },
+            data: {
+              callStatus: 'voicemail_left',
+              lastCalled: new Date(),
+              callOutcomes: {
+                ...(business.callOutcomes as any || {}),
+                lastVoicemail: {
+                  date: new Date(),
+                  message: voicemailMessage,
+                }
+              }
+            }
+          });
+        }
+        
+        this.logger.log(`✅ Voicemail status saved for business`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to save voicemail status: ${error.message}`, error.stack);
+    }
+  }
+
+  private generateVoicemailMessage(session: SimpleHumanSession): string {
+    // Extract key information from the goal
+    const callerInfo = this.extractCallerInfo(session.goal);
+    const purposeInfo = this.extractPurposeInfo(session.goal);
+    
+    let message = `Hello, this is ${callerInfo.name || 'a representative'}`;
+    
+    if (callerInfo.company) {
+      message += ` from ${callerInfo.company}`;
+    }
+    
+    message += `. I'm calling regarding ${purposeInfo.purpose || 'a business inquiry'}`;
+    
+    if (purposeInfo.details) {
+      message += `. ${purposeInfo.details}`;
+    }
+    
+    // Add contact info if available
+    if (callerInfo.contactInfo) {
+      message += `. Please call me back at ${callerInfo.contactInfo}`;
+    } else {
+      message += `. Please call me back at your earliest convenience`;
+    }
+    
+    message += `. Thank you.`;
+    
+    return message;
+  }
+
+  private extractCallerInfo(goal: string): { name?: string; company?: string; contactInfo?: string } {
+    const info: any = {};
+    
+    // Extract name (e.g., "Sarah from...")
+    const nameMatch = goal.match(/(\w+)\s+from\s+([^:,]+)/i);
+    if (nameMatch) {
+      info.name = nameMatch[1];
+      info.company = nameMatch[2].trim();
+    }
+    
+    // Extract contact info (email or phone)
+    const emailMatch = goal.match(/[\w.-]+@[\w.-]+\.\w+/);
+    if (emailMatch) {
+      info.contactInfo = emailMatch[0];
+    }
+    
+    const phoneMatch = goal.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+    if (phoneMatch) {
+      info.contactInfo = phoneMatch[0];
+    }
+    
+    return info;
+  }
+
+  private extractPurposeInfo(goal: string): { purpose?: string; details?: string } {
+    const info: any = {};
+    
+    // Look for common purpose patterns
+    if (goal.includes('catering')) {
+      info.purpose = 'catering services';
+      
+      const peopleMatch = goal.match(/(\d+)\s+people/i);
+      if (peopleMatch) {
+        info.details = `We need catering for ${peopleMatch[0]}`;
+      }
+      
+      const eventMatch = goal.match(/(?:for|regarding)\s+(?:a\s+)?([^.]+event[^.]*)/i);
+      if (eventMatch) {
+        info.details = (info.details ? info.details + ' for ' : 'We need services for ') + eventMatch[1];
+      }
+    } else if (goal.includes('information')) {
+      info.purpose = 'gathering information about your services';
+    } else if (goal.includes('pricing')) {
+      info.purpose = 'inquiring about pricing and availability';
+    } else {
+      // Generic fallback
+      const discussMatch = goal.match(/discuss\s+([^.]+)/i);
+      if (discussMatch) {
+        info.purpose = discussMatch[1];
+      }
+    }
+    
+    // Extract "Gather:" information if present
+    const gatherMatch = goal.match(/gather:\s*([^.]+)/i);
+    if (gatherMatch) {
+      info.details = `Specifically, I'm interested in ${gatherMatch[1]}`;
+    }
+    
+    return info;
+  }
+
   @OnEvent('ivr.detection_completed')
   async handleIVRDetectionCompleted(event: {
     callSid: string;

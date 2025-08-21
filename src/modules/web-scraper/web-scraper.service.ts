@@ -371,19 +371,68 @@ export class WebScraperService {
   }
 
   private findAddress($: any): string | null {
+    // Priority selectors for addresses
     const addressSelectors = [
       '.address', '.location', '.contact-address', 
-      '.business-address', '.street-address'
+      '.business-address', '.street-address', '.location-info',
+      '.contact-location', '.address-info', '.full-address',
+      '[itemtype*="PostalAddress"]', '[itemprop="address"]'
     ];
 
     for (const selector of addressSelectors) {
       const text = $(selector).text().trim();
-      if (text && text.length > 10 && text.length < 200) {
+      if (text && this.isValidAddress(text)) {
         return text;
       }
     }
 
+    // Check JSON-LD structured data for address
+    $('script[type="application/ld+json"]').each((i: number, elem: any) => {
+      try {
+        const data = JSON.parse($(elem).text());
+        if (data.address) {
+          if (typeof data.address === 'string') {
+            return data.address;
+          } else if (data.address.streetAddress || data.address.addressLocality) {
+            const parts = [
+              data.address.streetAddress,
+              data.address.addressLocality,
+              data.address.addressRegion,
+              data.address.postalCode
+            ].filter(Boolean);
+            if (parts.length >= 2) {
+              return parts.join(', ');
+            }
+          }
+        }
+      } catch (e) {
+        // Invalid JSON, continue
+      }
+    });
+
+    // Look for address patterns in text
+    const bodyText = $('body').text();
+    const addressPattern = /\b\d+\s+[A-Za-z\s]+(Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Lane|Ln)[,\s]+[A-Za-z\s]+[,\s]+[A-Z]{2}\s+\d{5}/gi;
+    const addressMatch = bodyText.match(addressPattern);
+    if (addressMatch && addressMatch[0]) {
+      return addressMatch[0].trim();
+    }
+
     return null;
+  }
+
+  private isValidAddress(text: string): boolean {
+    if (!text || text.length < 10 || text.length > 300) return false;
+    
+    // Must contain some address-like patterns
+    const addressIndicators = [
+      /\d+\s+[A-Za-z]/,  // Number followed by street name
+      /\b(street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln)\b/i,
+      /\b[A-Z]{2}\s+\d{5}/,  // State and ZIP
+      /\d{5}(-\d{4})?$/,  // ZIP code at end
+    ];
+    
+    return addressIndicators.some(pattern => pattern.test(text));
   }
 
   private findBusinessName($: any): string | null {
@@ -501,8 +550,25 @@ export class WebScraperService {
   private async saveBusinessesToDatabase(businesses: BusinessInfo[]): Promise<void> {
     for (const business of businesses) {
       try {
-        await this.prisma.business.create({
-          data: {
+        // Use upsert to handle duplicates gracefully
+        await this.prisma.business.upsert({
+          where: {
+            website: business.website || `temp_${Date.now()}_${Math.random()}`, // Handle null websites
+          },
+          update: {
+            // Update with newer data if business already exists
+            name: business.name,
+            phoneNumber: business.phoneNumber,
+            email: business.email,
+            addressFormatted: business.address?.formatted,
+            industry: business.industry,
+            description: business.description,
+            services: business.services || [],
+            source: business.source.toString(),
+            confidence: business.confidence,
+            updatedAt: new Date(),
+          },
+          create: {
             name: business.name,
             website: business.website,
             phoneNumber: business.phoneNumber,
@@ -516,10 +582,7 @@ export class WebScraperService {
           },
         });
       } catch (error) {
-        // Ignore duplicate errors
-        if (!error.message.includes('Unique constraint')) {
-          this.logger.warn(`Failed to save business ${business.name}: ${error.message}`);
-        }
+        this.logger.warn(`Failed to save/update business ${business.name}: ${error.message}`);
       }
     }
   }

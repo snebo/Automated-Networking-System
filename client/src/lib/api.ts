@@ -12,11 +12,9 @@ export const api = axios.create({
 export const scraperApi = {
   scrapeBusinesses: async (query: string, location: string) => {
     const response = await api.post('/scraper/scrape-integrated', { 
-      query, 
-      location,
-      requirePhone: true,
-      excludeContentTypes: ['blog_articles', 'news_articles', 'top_lists', 'reviews_only', 'generic_info'],
-      maxResults: 50
+      industry: query,  // Map query to industry field
+      location: location,
+      businessType: query  // Also send as businessType for better matching
     });
     return response.data;
   },

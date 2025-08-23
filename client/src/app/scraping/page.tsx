@@ -1,26 +1,26 @@
 'use client';
 
+import AnimatedSection from '@/components/AnimatedSection';
+import FloatingElements from '@/components/FloatingElements';
 import { scraperApi } from '@/lib/api';
 import { formatAddress, formatPhone } from '@/lib/utils';
 import { Business } from '@/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  Building2,
+  Database,
   Download,
   Eye,
+  Filter,
   MapPin,
+  Phone,
   RefreshCw,
   Search,
   Settings,
   Trash2,
-  Database,
-  Filter,
-  Building2,
-  Phone,
 } from 'lucide-react';
 import { useState } from 'react';
-import AnimatedSection from '@/components/AnimatedSection';
-import FloatingElements from '@/components/FloatingElements';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -50,7 +50,11 @@ function ConfirmationModal({
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div className="p-8">
           <div className="flex items-start">
-            <div className={`flex-shrink-0 ${danger ? 'text-red-600' : 'text-blue-600'} bg-gray-50 rounded-xl p-3`}>
+            <div
+              className={`flex-shrink-0 ${
+                danger ? 'text-red-600' : 'text-blue-600'
+              } bg-gray-50 rounded-xl p-3`}
+            >
               <AlertTriangle className="h-6 w-6" />
             </div>
             <div className="ml-4 w-full">
@@ -213,7 +217,7 @@ export default function ScrapingPage() {
     ]);
 
     const csvContent = [headers, ...rows]
-      .map((row) => row.map((field) => `"${field}"`).join(','))
+      .map((row) => row.map((field: string) => `"${field}"`).join(','))
       .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -228,7 +232,7 @@ export default function ScrapingPage() {
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 custom-scrollbar overflow-hidden">
       <FloatingElements count={15} />
-      
+
       {/* Hero Section */}
       <section className="relative py-20 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 overflow-hidden">
         <div className="absolute inset-0 bg-pattern-dots opacity-10"></div>
@@ -245,7 +249,7 @@ export default function ScrapingPage() {
               </span>
             </h1>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
-              Advanced ML-powered data extraction with intelligent filtering, phone verification, 
+              Advanced ML-powered data extraction with intelligent filtering, phone verification,
               and real-time quality assessment for enterprise-grade accuracy.
             </p>
           </AnimatedSection>
@@ -262,10 +266,12 @@ export default function ScrapingPage() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Intelligent Search</h2>
-                <p className="text-gray-600">AI-powered business discovery with quality filtering</p>
+                <p className="text-gray-600">
+                  AI-powered business discovery with quality filtering
+                </p>
               </div>
             </div>
-            
+
             <form onSubmit={handleScrape} className="grid md:grid-cols-3 gap-6">
               <div className="relative group">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
@@ -278,7 +284,7 @@ export default function ScrapingPage() {
                   disabled={scrapeMutation.isPending}
                 />
               </div>
-              
+
               <div className="relative group">
                 <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-purple-500 transition-colors" />
                 <input
@@ -290,7 +296,7 @@ export default function ScrapingPage() {
                   disabled={scrapeMutation.isPending}
                 />
               </div>
-              
+
               <button
                 type="submit"
                 disabled={scrapeMutation.isPending || !query.trim() || !location.trim()}
@@ -315,9 +321,12 @@ export default function ScrapingPage() {
               <div className="flex items-start">
                 <Filter className="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
                 <div>
-                  <h3 className="text-sm font-semibold text-blue-900 mb-1">Smart Filtering Active</h3>
+                  <h3 className="text-sm font-semibold text-blue-900 mb-1">
+                    Smart Filtering Active
+                  </h3>
                   <p className="text-xs text-blue-700">
-                    Phone verification required • Content quality filtering • Article/blog exclusion • Real-time deduplication
+                    Phone verification required • Content quality filtering • Article/blog exclusion
+                    • Real-time deduplication
                   </p>
                 </div>
               </div>
@@ -334,7 +343,9 @@ export default function ScrapingPage() {
                 <div>
                   <h3 className="text-lg font-semibold text-red-800 mb-1">Search Error</h3>
                   <p className="text-red-700">
-                    {scrapeMutation.error instanceof Error ? scrapeMutation.error.message : 'Something went wrong during the search'}
+                    {scrapeMutation.error instanceof Error
+                      ? scrapeMutation.error.message
+                      : 'Something went wrong during the search'}
                   </p>
                 </div>
               </div>
@@ -359,7 +370,7 @@ export default function ScrapingPage() {
                     <p className="text-gray-600">Verified and filtered business data</p>
                   </div>
                 </div>
-                
+
                 <div className="flex gap-3">
                   <button
                     onClick={exportToCSV}
@@ -394,7 +405,9 @@ export default function ScrapingPage() {
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-6">
                   <AlertTriangle className="h-8 w-8 text-red-600" />
                 </div>
-                <h3 className="text-xl font-semibold text-red-900 mb-2">Error loading businesses</h3>
+                <h3 className="text-xl font-semibold text-red-900 mb-2">
+                  Error loading businesses
+                </h3>
                 <p className="text-red-600">Please try refreshing the page</p>
               </div>
             ) : businesses.length === 0 ? (
@@ -410,20 +423,37 @@ export default function ScrapingPage() {
                 <table className="w-full">
                   <thead className="bg-gradient-to-r from-gray-50 to-slate-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Business</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Contact</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Location</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Industry</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider w-48">Services</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">Actions</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
+                        Business
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
+                        Contact
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
+                        Location
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
+                        Industry
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider w-48">
+                        Services
+                      </th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {businesses.map((business: Business) => (
-                      <tr key={business.id} className="hover:bg-blue-50/50 transition-colors duration-200">
+                      <tr
+                        key={business.id}
+                        className="hover:bg-blue-50/50 transition-colors duration-200"
+                      >
                         <td className="px-6 py-4">
                           <div>
-                            <div className="font-semibold text-gray-900 text-lg">{business.name}</div>
+                            <div className="font-semibold text-gray-900 text-lg">
+                              {business.name}
+                            </div>
                             {business.website && (
                               <a
                                 href={business.website}
@@ -447,7 +477,9 @@ export default function ScrapingPage() {
                             <MapPin className="h-4 w-4 mr-2 text-red-500 mt-0.5 flex-shrink-0" />
                             <div className="break-words">
                               {formatAddress(business.address) || (
-                                <span className="text-gray-400 text-xs italic">No address available</span>
+                                <span className="text-gray-400 text-xs italic">
+                                  No address available
+                                </span>
                               )}
                             </div>
                           </div>

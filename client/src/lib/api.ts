@@ -19,7 +19,7 @@ export const scraperApi = {
       hasPhone: true,  // Hardcoded: always require phone numbers
       limit: 100,  // Hardcoded: get more results
       minRating: 3.0,  // Hardcoded: only get businesses with decent ratings
-      excludeContentTypes: ['BLOG_ARTICLES', 'NEWS_ARTICLES', 'SOCIAL_MEDIA', 'DIRECTORIES', 'REVIEWS_ONLY'],  // Use enum values
+      excludeContentTypes: ['blog_articles', 'news_articles', 'social_media', 'directories', 'reviews_only'],  // Use correct enum values
       onlyBusinessListings: true,  // Hardcoded: only get actual business listings
       requirePhysicalLocation: true,  // Hardcoded: require businesses to have addresses
       hasWebsite: true,  // Hardcoded: prefer businesses with websites

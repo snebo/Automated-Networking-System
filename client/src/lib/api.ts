@@ -14,7 +14,18 @@ export const scraperApi = {
     const response = await api.post('/scraper/scrape-integrated', { 
       industry: query,  // Map query to industry field
       location: location,
-      businessType: query  // Also send as businessType for better matching
+      businessType: query,  // Also send as businessType for better matching
+      keywords: [query, 'phone', 'contact', 'address', 'hours'],  // Add relevant keywords
+      hasPhone: true,  // Hardcoded: always require phone numbers
+      limit: 100,  // Hardcoded: get more results
+      minRating: 3.0,  // Hardcoded: only get businesses with decent ratings
+      excludeContentTypes: ['BLOG_ARTICLES', 'NEWS_ARTICLES', 'SOCIAL_MEDIA', 'DIRECTORIES', 'REVIEWS_ONLY'],  // Use enum values
+      onlyBusinessListings: true,  // Hardcoded: only get actual business listings
+      requirePhysicalLocation: true,  // Hardcoded: require businesses to have addresses
+      hasWebsite: true,  // Hardcoded: prefer businesses with websites
+      enableVerificationWorkflow: true,  // Hardcoded: enable verification
+      autoGenerateScripts: true,  // Hardcoded: auto-generate scripts
+      priority: 'high'  // Hardcoded: high priority processing
     });
     return response.data;
   },

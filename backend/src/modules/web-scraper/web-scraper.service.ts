@@ -42,18 +42,51 @@ export class WebScraperService {
     this.logger.log(`Starting scrape for query: ${JSON.stringify(query)}`);
 
     try {
-      // Use DuckDuckGo as primary source (more reliable than Google)
-      const duckDuckGoResults = await this.scrapeDuckDuckGo(query);
-      businesses.push(...duckDuckGoResults);
+      // Try multiple sources in priority order for better results
+      
+      // 1. YellowPages - best for phone numbers and business info
+      try {
+        const yellowPagesResults = await this.scrapeYellowPages(query);
+        businesses.push(...yellowPagesResults);
+        this.logger.log(`YellowPages found ${yellowPagesResults.length} businesses`);
+      } catch (error) {
+        this.logger.warn(`YellowPages scraping failed: ${error.message}`);
+        errors.push(`YellowPages: ${error.message}`);
+      }
 
-      // If not enough results, try Google
+      // 2. Yelp - good for ratings and contact info
+      if (businesses.length < (query.limit || 20)) {
+        try {
+          const yelpResults = await this.scrapeYelp(query);
+          businesses.push(...yelpResults);
+          this.logger.log(`Yelp found ${yelpResults.length} businesses`);
+        } catch (error) {
+          this.logger.warn(`Yelp scraping failed: ${error.message}`);
+          errors.push(`Yelp: ${error.message}`);
+        }
+      }
+
+      // 3. Google Business Search - fallback
       if (businesses.length < (query.limit || 10)) {
         try {
-          const googleResults = await this.scrapeGoogleSearch(query);
+          const googleResults = await this.scrapeGoogleBusiness(query);
           businesses.push(...googleResults);
+          this.logger.log(`Google found ${googleResults.length} businesses`);
         } catch (error) {
           this.logger.warn(`Google scraping failed: ${error.message}`);
           errors.push(`Google: ${error.message}`);
+        }
+      }
+
+      // 4. DuckDuckGo - last resort
+      if (businesses.length < (query.limit || 5)) {
+        try {
+          const duckDuckGoResults = await this.scrapeDuckDuckGo(query);
+          businesses.push(...duckDuckGoResults);
+          this.logger.log(`DuckDuckGo found ${duckDuckGoResults.length} businesses`);
+        } catch (error) {
+          this.logger.warn(`DuckDuckGo scraping failed: ${error.message}`);
+          errors.push(`DuckDuckGo: ${error.message}`);
         }
       }
 
@@ -1348,5 +1381,272 @@ export class WebScraperService {
       
       throw new Error(`Failed to delete business: ${error.message}`);
     }
+  }
+
+  // ===== ADDITIONAL SCRAPER METHODS =====
+
+  private async scrapeYellowPages(query: ScraperQuery): Promise<BusinessInfo[]> {
+    const businesses: BusinessInfo[] = [];
+    const searchUrl = this.buildYellowPagesUrl(query);
+
+    try {
+      await this.respectRateLimit('yellowpages.com');
+      const response = await this.makeHttpRequest(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // YellowPages selectors
+      const selectors = ['.result', '.organic', '.listing', '.business-card'];
+      
+      for (const selector of selectors) {
+        $(selector).each((index, element) => {
+          if (businesses.length < (query.limit || 50)) {
+            const business = this.parseYellowPagesListing($, element);
+            if (business && business.phoneNumber && this.isLikelyBusiness(business)) {
+              businesses.push(business);
+            }
+          }
+        });
+        if (businesses.length > 0) break; // Stop if we found results with this selector
+      }
+
+      this.logger.log(`Scraped ${businesses.length} businesses from YellowPages`);
+    } catch (error) {
+      this.logger.error(`YellowPages scraping error: ${error.message}`);
+      throw error;
+    }
+
+    return businesses;
+  }
+
+  private async scrapeYelp(query: ScraperQuery): Promise<BusinessInfo[]> {
+    const businesses: BusinessInfo[] = [];
+    const searchUrl = this.buildYelpUrl(query);
+
+    try {
+      await this.respectRateLimit('yelp.com');
+      const response = await this.makeHttpRequest(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        timeout: 15000,
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Yelp selectors (they change frequently)
+      const selectors = [
+        'div[data-testid="serp-ia-card"]',
+        '.searchResult',
+        '[data-testid="biz-card"]',
+        '.businessName',
+        '.container__09f24__mpR8_'
+      ];
+      
+      for (const selector of selectors) {
+        $(selector).each((index, element) => {
+          if (businesses.length < (query.limit || 50)) {
+            const business = this.parseYelpListing($, element);
+            if (business && this.isLikelyBusiness(business)) {
+              businesses.push(business);
+            }
+          }
+        });
+        if (businesses.length > 0) break;
+      }
+
+      this.logger.log(`Scraped ${businesses.length} businesses from Yelp`);
+    } catch (error) {
+      this.logger.error(`Yelp scraping error: ${error.message}`);
+      throw error;
+    }
+
+    return businesses;
+  }
+
+  private async scrapeGoogleBusiness(query: ScraperQuery): Promise<BusinessInfo[]> {
+    const businesses: BusinessInfo[] = [];
+    const searchUrl = this.buildGoogleBusinessUrl(query);
+
+    try {
+      await this.respectRateLimit('google.com');
+      const response = await this.makeHttpRequest(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Google business result selectors
+      const selectors = ['.g', '.tF2Cxc', '.commercial-unit-desktop-top'];
+      
+      for (const selector of selectors) {
+        $(selector).each((index, element) => {
+          if (businesses.length < (query.limit || 50)) {
+            const business = this.parseGoogleBusinessListing($, element);
+            if (business && this.isLikelyBusiness(business)) {
+              businesses.push(business);
+            }
+          }
+        });
+        if (businesses.length > 0) break;
+      }
+
+      this.logger.log(`Scraped ${businesses.length} businesses from Google`);
+    } catch (error) {
+      this.logger.error(`Google Business scraping error: ${error.message}`);
+      throw error;
+    }
+
+    return businesses;
+  }
+
+  // URL Builders
+  private buildYellowPagesUrl(query: ScraperQuery): string {
+    const baseUrl = 'https://www.yellowpages.com/search';
+    const params = new URLSearchParams();
+    
+    const searchTerms = [];
+    if (query.businessType) searchTerms.push(query.businessType);
+    if (query.industry) searchTerms.push(query.industry);
+    if (query.keywords?.length) searchTerms.push(...query.keywords);
+    
+    params.append('search_terms', searchTerms.join(' '));
+    
+    if (query.location) {
+      params.append('geo_location_terms', query.location);
+    }
+
+    return `${baseUrl}?${params.toString()}`;
+  }
+
+  private buildYelpUrl(query: ScraperQuery): string {
+    const baseUrl = 'https://www.yelp.com/search';
+    const params = new URLSearchParams();
+    
+    const searchTerms = [];
+    if (query.businessType) searchTerms.push(query.businessType);
+    if (query.industry) searchTerms.push(query.industry);
+    if (query.keywords?.length) searchTerms.push(...query.keywords);
+    
+    params.append('find_desc', searchTerms.join(' '));
+    
+    if (query.location) {
+      params.append('find_loc', query.location);
+    }
+
+    return `${baseUrl}?${params.toString()}`;
+  }
+
+  private buildGoogleBusinessUrl(query: ScraperQuery): string {
+    const searchTerms = [];
+    if (query.businessType) searchTerms.push(query.businessType);
+    if (query.industry) searchTerms.push(query.industry);
+    if (query.keywords?.length) searchTerms.push(...query.keywords);
+    if (query.location) searchTerms.push(`in ${query.location}`);
+    
+    searchTerms.push('phone number'); // Always include phone number in search
+    
+    const searchQuery = searchTerms.join(' ');
+    return `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+  }
+
+  // Parsers
+  private parseYellowPagesListing($: cheerio.CheerioAPI, element: any): BusinessInfo | null {
+    const $el = $(element);
+    
+    try {
+      const name = $el.find('.business-name, .n, h3, .listing-name').first().text().trim();
+      const phoneText = $el.find('.phones, .phone, [class*="phone"]').first().text().trim();
+      const phone = this.extractPhoneNumber(phoneText);
+      const address = $el.find('.adr, .locality, .street-address').text().trim();
+      const website = $el.find('a[href*="http"]').attr('href');
+
+      if (!name || !phone) return null;
+
+      return {
+        name,
+        phoneNumber: phone,
+        website: website || undefined,
+        address: address || undefined,
+        source: 'yellowpages',
+      } as BusinessInfo;
+    } catch (error) {
+      this.logger.debug(`Error parsing YellowPages listing: ${error.message}`);
+      return null;
+    }
+  }
+
+  private parseYelpListing($: cheerio.CheerioAPI, element: any): BusinessInfo | null {
+    const $el = $(element);
+    
+    try {
+      const name = $el.find('[data-testid="biz-name"], .businessName, h3, a[class*="businessName"]').first().text().trim();
+      const ratingText = $el.find('[aria-label*="star"], .rating, [class*="rating"]').first().attr('aria-label') || '';
+      const rating = parseFloat(ratingText.match(/[\d.]+/)?.[0] || '0');
+      const address = $el.find('[data-testid="address"], .address, [class*="address"]').text().trim();
+      const phoneText = $el.find('[data-testid="phone"], .phone, [class*="phone"]').text().trim();
+      const phone = this.extractPhoneNumber(phoneText);
+
+      if (!name) return null;
+
+      return {
+        name,
+        phoneNumber: phone || undefined,
+        address: address || undefined,
+        rating: rating > 0 ? rating : undefined,
+        source: 'yelp',
+      } as BusinessInfo;
+    } catch (error) {
+      this.logger.debug(`Error parsing Yelp listing: ${error.message}`);
+      return null;
+    }
+  }
+
+  private parseGoogleBusinessListing($: cheerio.CheerioAPI, element: any): BusinessInfo | null {
+    const $el = $(element);
+    
+    try {
+      const name = $el.find('h3, [role="heading"]').first().text().trim();
+      const snippet = $el.find('.VwiC3b, .s, .st').text();
+      const phone = this.extractPhoneNumber(snippet);
+      const link = $el.find('a').first().attr('href');
+      const website = link?.startsWith('http') ? link : undefined;
+
+      if (!name) return null;
+
+      return {
+        name,
+        phoneNumber: phone || undefined,
+        website,
+        description: snippet?.slice(0, 200),
+        source: 'google',
+      } as BusinessInfo;
+    } catch (error) {
+      this.logger.debug(`Error parsing Google listing: ${error.message}`);
+      return null;
+    }
+  }
+
+  private isLikelyBusiness(business: BusinessInfo): boolean {
+    if (!business.name) return false;
+    
+    // Filter out non-business results
+    const lowercaseName = business.name.toLowerCase();
+    const excludePatterns = [
+      /^(find|search|directory|yellow pages|white pages)$/i,
+      /^(home|about|contact|blog|news)$/i,
+      /^(facebook|twitter|instagram|linkedin)$/i,
+    ];
+    
+    return !excludePatterns.some(pattern => pattern.test(lowercaseName));
   }
 }

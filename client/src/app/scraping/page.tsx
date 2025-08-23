@@ -111,11 +111,6 @@ export default function ScrapingPage() {
     queryFn: scraperApi.getScrapedBusinesses,
   });
 
-  // Debug logging to see what data we're getting
-  if (businesses.length > 0) {
-    console.log('Sample business data:', businesses[0]);
-    console.log('Sample address:', businesses[0]?.address);
-  }
 
   const scrapeMutation = useMutation({
     mutationFn: ({ query, location }: { query: string; location: string }) =>

@@ -34,12 +34,39 @@ async function bootstrap() {
   // Enable CORS with specific configuration for production
   const corsOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3001', 'http://localhost:3000'];
   
-  app.enableCors({
-    origin: corsOrigins,
+  // In production, we need to handle Vercel preview URLs and the main domain
+  const corsOptions = {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      
+      // Check if origin is in the allowed list
+      if (corsOrigins.some(allowed => origin.startsWith(allowed))) {
+        return callback(null, true);
+      }
+      
+      // Allow all Vercel preview deployments
+      if (origin.includes('.vercel.app')) {
+        return callback(null, true);
+      }
+      
+      // Allow localhost for development
+      if (origin.startsWith('http://localhost')) {
+        return callback(null, true);
+      }
+      
+      // Log rejected origins for debugging
+      console.log('CORS rejected origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  });
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+  };
+  
+  app.enableCors(corsOptions);
 
   // Swagger configuration
   const config = new DocumentBuilder()

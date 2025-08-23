@@ -1576,8 +1576,10 @@ export class WebScraperService {
         name,
         phoneNumber: phone,
         website: website || undefined,
-        address: address || undefined,
-        source: 'yellowpages',
+        address: address ? { formatted: address } : undefined,
+        source: DataSource.YELLOW_PAGES,
+        scrapedAt: new Date(),
+        confidence: 0.8, // High confidence for YellowPages
       } as BusinessInfo;
     } catch (error) {
       this.logger.debug(`Error parsing YellowPages listing: ${error.message}`);
@@ -1601,9 +1603,11 @@ export class WebScraperService {
       return {
         name,
         phoneNumber: phone || undefined,
-        address: address || undefined,
-        rating: rating > 0 ? rating : undefined,
-        source: 'yelp',
+        address: address ? { formatted: address } : undefined,
+        metadata: rating > 0 ? { rating } : undefined,
+        source: DataSource.YELP,
+        scrapedAt: new Date(),
+        confidence: 0.7, // Good confidence for Yelp
       } as BusinessInfo;
     } catch (error) {
       this.logger.debug(`Error parsing Yelp listing: ${error.message}`);
@@ -1628,7 +1632,9 @@ export class WebScraperService {
         phoneNumber: phone || undefined,
         website,
         description: snippet?.slice(0, 200),
-        source: 'google',
+        source: DataSource.GOOGLE_SEARCH,
+        scrapedAt: new Date(),
+        confidence: 0.6, // Lower confidence for Google generic results
       } as BusinessInfo;
     } catch (error) {
       this.logger.debug(`Error parsing Google listing: ${error.message}`);

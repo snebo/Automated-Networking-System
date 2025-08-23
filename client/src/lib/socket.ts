@@ -14,7 +14,7 @@ export const getSocket = (): Socket => {
   return socket;
 };
 
-export const subscribeToCallUpdates = (callId: string, callback: (data: any) => void) => {
+export const subscribeToCallUpdates = (callId: string, callback: (data: unknown) => void) => {
   const socket = getSocket();
   socket.on(`call:${callId}:update`, callback);
   
@@ -23,7 +23,7 @@ export const subscribeToCallUpdates = (callId: string, callback: (data: any) => 
   };
 };
 
-export const subscribeToTranscriptUpdates = (callId: string, callback: (data: any) => void) => {
+export const subscribeToTranscriptUpdates = (callId: string, callback: (data: unknown) => void) => {
   const socket = getSocket();
   socket.on(`call:${callId}:transcript`, callback);
   

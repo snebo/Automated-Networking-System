@@ -25,12 +25,12 @@ export default function BestPracticesPage() {
               <div>
                 <h3 className="text-lg font-semibold text-green-600 mb-3 flex items-center">
                   <CheckCircle className="h-5 w-5 mr-2" />
-                  Do's
+                  Do&apos;s
                 </h3>
                 <ul className="space-y-2 text-gray-700">
                   <li className="flex items-start">
                     <span className="text-green-500 mr-2 mt-1">•</span>
-                    Use specific industry terms (e.g., "pediatric dentist" vs "dentist")
+                    Use specific industry terms (e.g., &quot;pediatric dentist&quot; vs &quot;dentist&quot;)
                   </li>
                   <li className="flex items-start">
                     <span className="text-green-500 mr-2 mt-1">•</span>
@@ -49,7 +49,7 @@ export default function BestPracticesPage() {
               <div>
                 <h3 className="text-lg font-semibold text-red-600 mb-3 flex items-center">
                   <AlertTriangle className="h-5 w-5 mr-2" />
-                  Don'ts
+                  Don&apos;ts
                 </h3>
                 <ul className="space-y-2 text-gray-700">
                   <li className="flex items-start">
@@ -58,7 +58,7 @@ export default function BestPracticesPage() {
                   </li>
                   <li className="flex items-start">
                     <span className="text-red-500 mr-2 mt-1">•</span>
-                    Don't scrape without location constraints
+                    Don&apos;t scrape without location constraints
                   </li>
                   <li className="flex items-start">
                     <span className="text-red-500 mr-2 mt-1">•</span>

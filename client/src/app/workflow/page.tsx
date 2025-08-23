@@ -95,7 +95,7 @@ export default function WorkflowPage() {
     ]);
 
     const csvContent = [headers, ...rows]
-      .map(row => row.map(field => `"${field}"`).join(','))
+      .map(row => row.map((field: string) => `"${field}"`).join(','))
       .join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -107,8 +107,8 @@ export default function WorkflowPage() {
     URL.revokeObjectURL(url);
   };
 
-  const completedCalls = filteredBusinesses.filter(b => b.callStatus === 'completed').length;
-  const totalContacts = filteredBusinesses.reduce((sum, b) => sum + b.contacts.length, 0);
+  const completedCalls = filteredBusinesses.filter((b: CalledBusiness) => b.callStatus === 'completed').length;
+  const totalContacts = filteredBusinesses.reduce((sum: number, b: CalledBusiness) => sum + b.contacts.length, 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50">

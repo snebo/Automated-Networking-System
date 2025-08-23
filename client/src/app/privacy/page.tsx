@@ -283,7 +283,7 @@ export default function PrivacyPolicyPage() {
             <h2 className="text-xl font-bold text-blue-900 mb-3">Policy Updates</h2>
             <p className="text-blue-800">
               We may update this privacy policy periodically to reflect changes in our practices or applicable law. 
-              We will notify you of significant changes via email or through our platform. The "Last updated" date 
+              We will notify you of significant changes via email or through our platform. The &quot;Last updated&quot; date 
               at the top indicates when the policy was most recently revised.
             </p>
           </section>

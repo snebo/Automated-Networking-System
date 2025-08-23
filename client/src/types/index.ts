@@ -85,7 +85,7 @@ export interface WorkflowStep {
   status: 'pending' | 'in-progress' | 'completed' | 'failed';
   startTime?: Date;
   endTime?: Date;
-  result?: any;
+  result?: unknown;
   error?: string;
 }
 
@@ -126,6 +126,6 @@ export interface CallProgress {
   extractedInfo?: {
     contacts: Contact[];
     verifiedPhone?: string;
-    businessInfo?: any;
+    businessInfo?: Record<string, unknown>;
   };
 }

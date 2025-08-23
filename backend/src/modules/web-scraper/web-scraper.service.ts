@@ -1560,7 +1560,7 @@ export class WebScraperService {
   }
 
   // Parsers
-  private parseYellowPagesListing($: cheerio.CheerioAPI, element: any): BusinessInfo | null {
+  private parseYellowPagesListing($: cheerio.Root, element: any): BusinessInfo | null {
     const $el = $(element);
     
     try {
@@ -1587,7 +1587,7 @@ export class WebScraperService {
     }
   }
 
-  private parseYelpListing($: cheerio.CheerioAPI, element: any): BusinessInfo | null {
+  private parseYelpListing($: cheerio.Root, element: any): BusinessInfo | null {
     const $el = $(element);
     
     try {
@@ -1615,7 +1615,7 @@ export class WebScraperService {
     }
   }
 
-  private parseGoogleBusinessListing($: cheerio.CheerioAPI, element: any): BusinessInfo | null {
+  private parseGoogleBusinessListing($: cheerio.Root, element: any): BusinessInfo | null {
     const $el = $(element);
     
     try {
@@ -1654,5 +1654,47 @@ export class WebScraperService {
     ];
     
     return !excludePatterns.some(pattern => pattern.test(lowercaseName));
+  }
+
+  // Utility method to extract phone numbers from text
+  private extractPhoneNumber(text: string): string | null {
+    if (!text) return null;
+    
+    // Common phone number patterns
+    const phonePatterns = [
+      // (123) 456-7890
+      /\((\d{3})\)\s*(\d{3})-(\d{4})/,
+      // 123-456-7890
+      /(\d{3})-(\d{3})-(\d{4})/,
+      // 123.456.7890
+      /(\d{3})\.(\d{3})\.(\d{4})/,
+      // 123 456 7890
+      /(\d{3})\s+(\d{3})\s+(\d{4})/,
+      // 1234567890
+      /(\d{10})/,
+      // +1 123 456 7890
+      /\+1\s*(\d{3})\s*(\d{3})\s*(\d{4})/,
+    ];
+
+    for (const pattern of phonePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        // Extract digits and format
+        const digits = match[0].replace(/\D/g, '');
+        if (digits.length === 10) {
+          return `+1${digits}`;
+        } else if (digits.length === 11 && digits.startsWith('1')) {
+          return `+${digits}`;
+        }
+      }
+    }
+
+    // Fallback: extract any sequence of 10 digits
+    const digitMatch = text.match(/\d{10}/);
+    if (digitMatch) {
+      return `+1${digitMatch[0]}`;
+    }
+
+    return null;
   }
 }

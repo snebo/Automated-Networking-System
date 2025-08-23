@@ -10,21 +10,21 @@ export const api = axios.create({
 });
 
 export const scraperApi = {
-  scrapeBusinesses: async (query: string, location: string) => {
+  scrapeBusinesses: async (query: string, location: string, maxResults?: number) => {
     const response = await api.post('/scraper/scrape-integrated', { 
       industry: query,  // Map query to industry field
       location: location,
       businessType: query,  // Also send as businessType for better matching
       keywords: [query, 'phone', 'contact', 'address', 'hours'],  // Add relevant keywords
       hasPhone: true,  // Hardcoded: always require phone numbers
-      limit: 100,  // Hardcoded: get more results
+      limit: maxResults || 50,  // User configurable: default 50
       minRating: 3.0,  // Hardcoded: only get businesses with decent ratings
       excludeContentTypes: ['blog_articles', 'news_articles', 'social_media', 'directories', 'reviews_only'],  // Use correct enum values
       onlyBusinessListings: true,  // Hardcoded: only get actual business listings
       requirePhysicalLocation: true,  // Hardcoded: require businesses to have addresses
       hasWebsite: true,  // Hardcoded: prefer businesses with websites
-      enableVerificationWorkflow: true,  // Hardcoded: enable verification
-      autoGenerateScripts: true,  // Hardcoded: auto-generate scripts
+      enableVerificationWorkflow: false,  // Disabled: don't enable verification workflow yet
+      autoGenerateScripts: false,  // Disabled: don't auto-generate scripts yet
       priority: 'high'  // Hardcoded: high priority processing
     });
     return response.data;

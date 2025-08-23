@@ -13,6 +13,7 @@ import {
   Download,
   Eye,
   Filter,
+  Hash,
   MapPin,
   Phone,
   RefreshCw,
@@ -89,6 +90,7 @@ function ConfirmationModal({
 export default function ScrapingPage() {
   const [query, setQuery] = useState('');
   const [location, setLocation] = useState('');
+  const [maxResults, setMaxResults] = useState(50);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -113,12 +115,13 @@ export default function ScrapingPage() {
 
 
   const scrapeMutation = useMutation({
-    mutationFn: ({ query, location }: { query: string; location: string }) =>
-      scraperApi.scrapeBusinesses(query, location),
+    mutationFn: ({ query, location, maxResults }: { query: string; location: string; maxResults: number }) =>
+      scraperApi.scrapeBusinesses(query, location, maxResults),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['businesses'] });
       setQuery('');
       setLocation('');
+      setMaxResults(50);
     },
   });
 
@@ -172,7 +175,11 @@ export default function ScrapingPage() {
   const handleScrape = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim() && location.trim()) {
-      scrapeMutation.mutate({ query: query.trim(), location: location.trim() });
+      scrapeMutation.mutate({ 
+        query: query.trim(), 
+        location: location.trim(), 
+        maxResults 
+      });
     }
   };
 
@@ -267,7 +274,7 @@ export default function ScrapingPage() {
               </div>
             </div>
 
-            <form onSubmit={handleScrape} className="grid md:grid-cols-3 gap-6">
+            <form onSubmit={handleScrape} className="grid md:grid-cols-4 gap-4">
               <div className="relative group">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
@@ -288,6 +295,20 @@ export default function ScrapingPage() {
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all duration-300 text-gray-900 placeholder-gray-500"
+                  disabled={scrapeMutation.isPending}
+                />
+              </div>
+
+              <div className="relative group">
+                <Hash className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-green-500 transition-colors" />
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  placeholder="Max results (e.g., 50)"
+                  value={maxResults}
+                  onChange={(e) => setMaxResults(parseInt(e.target.value) || 50)}
+                  className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all duration-300 text-gray-900 placeholder-gray-500"
                   disabled={scrapeMutation.isPending}
                 />
               </div>

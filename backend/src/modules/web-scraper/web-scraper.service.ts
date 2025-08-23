@@ -649,35 +649,50 @@ export class WebScraperService {
 
   // Additional methods required by controller
   async getStoredBusinesses(filters?: { industry?: string; location?: string; notCalledSince?: Date }): Promise<BusinessInfo[]> {
-    const businesses = await this.prisma.business.findMany({
-      where: {
-        ...(filters?.industry && { industry: { contains: filters.industry, mode: 'insensitive' } }),
-        ...(filters?.location && { addressFormatted: { contains: filters.location, mode: 'insensitive' } }),
-        ...(filters?.notCalledSince && { 
-          OR: [
-            { lastCalled: null },
-            { lastCalled: { lt: filters.notCalledSince } }
-          ]
-        }),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    this.logger.log(`Getting stored businesses with filters: ${JSON.stringify(filters)}`);
+    
+    try {
+      const businesses = await this.prisma.business.findMany({
+        where: {
+          ...(filters?.industry && { industry: { contains: filters.industry, mode: 'insensitive' } }),
+          ...(filters?.location && { addressFormatted: { contains: filters.location, mode: 'insensitive' } }),
+          ...(filters?.notCalledSince && { 
+            OR: [
+              { lastCalled: null },
+              { lastCalled: { lt: filters.notCalledSince } }
+            ]
+          }),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
 
-    return businesses.map(b => ({
-      id: b.id,
-      name: b.name,
-      phoneNumber: b.phoneNumber || undefined,
-      email: b.email || undefined,
-      address: b.addressFormatted ? { formatted: b.addressFormatted, country: 'USA' } : undefined,
-      website: b.website || undefined,
-      industry: b.industry || undefined,
-      description: b.description || undefined,
-      services: b.services || undefined,
-      scrapedAt: b.createdAt,
-      source: b.source as DataSource,
-      confidence: b.confidence,
-    }));
+      this.logger.log(`Found ${businesses.length} businesses`);
+      return businesses.map(b => ({
+        id: b.id,
+        name: b.name,
+        phoneNumber: b.phoneNumber || undefined,
+        email: b.email || undefined,
+        address: b.addressFormatted ? { formatted: b.addressFormatted, country: 'USA' } : undefined,
+        website: b.website || undefined,
+        industry: b.industry || undefined,
+        description: b.description || undefined,
+        services: b.services || undefined,
+        scrapedAt: b.createdAt,
+        source: b.source as DataSource,
+        confidence: b.confidence,
+      }));
+    } catch (error) {
+      this.logger.error(`Error getting stored businesses: ${error.message}`, error.stack);
+      
+      // If database is unavailable, return empty array instead of crashing
+      if (error.message.includes('fetch failed') || error.message.includes('Cannot fetch data')) {
+        this.logger.warn('Database connection issue, returning empty business list');
+        return [];
+      }
+      
+      throw error;
+    }
   }
 
   async generateTestData(filters?: { industry?: string; location?: string }): Promise<any> {
@@ -1288,5 +1303,50 @@ export class WebScraperService {
         }
       }
     });
+  }
+
+  async deleteBusiness(businessId: string): Promise<{ message: string; deletedId: string }> {
+    this.logger.log(`Deleting business: ${businessId}`);
+    
+    try {
+      // Check if business exists
+      const business = await this.prisma.business.findUnique({
+        where: { id: businessId }
+      });
+
+      if (!business) {
+        throw new Error(`Business with ID ${businessId} not found`);
+      }
+
+      // Delete the business (this will cascade delete related records)
+      await this.prisma.business.delete({
+        where: { id: businessId }
+      });
+
+      this.logger.log(`Successfully deleted business: ${business.name} (${businessId})`);
+      
+      return {
+        message: `Business "${business.name}" deleted successfully`,
+        deletedId: businessId
+      };
+    } catch (error) {
+      this.logger.error(`Failed to delete business ${businessId}: ${error.message}`, error.stack);
+      
+      // Handle specific Prisma errors
+      if (error.code === 'P2025') {
+        throw new Error(`Business with ID ${businessId} not found`);
+      }
+      
+      // Handle database connectivity issues
+      if (error.message.includes('fetch failed') || error.message.includes('Cannot fetch data')) {
+        throw new Error('Database connection error. Please try again later.');
+      }
+      
+      if (error.message.includes('not found')) {
+        throw new Error(`Business with ID ${businessId} not found`);
+      }
+      
+      throw new Error(`Failed to delete business: ${error.message}`);
+    }
   }
 }

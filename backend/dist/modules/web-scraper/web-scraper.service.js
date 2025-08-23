@@ -547,34 +547,46 @@ let WebScraperService = WebScraperService_1 = class WebScraperService {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
     async getStoredBusinesses(filters) {
-        const businesses = await this.prisma.business.findMany({
-            where: {
-                ...(filters?.industry && { industry: { contains: filters.industry, mode: 'insensitive' } }),
-                ...(filters?.location && { addressFormatted: { contains: filters.location, mode: 'insensitive' } }),
-                ...(filters?.notCalledSince && {
-                    OR: [
-                        { lastCalled: null },
-                        { lastCalled: { lt: filters.notCalledSince } }
-                    ]
-                }),
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 100,
-        });
-        return businesses.map(b => ({
-            id: b.id,
-            name: b.name,
-            phoneNumber: b.phoneNumber || undefined,
-            email: b.email || undefined,
-            address: b.addressFormatted ? { formatted: b.addressFormatted, country: 'USA' } : undefined,
-            website: b.website || undefined,
-            industry: b.industry || undefined,
-            description: b.description || undefined,
-            services: b.services || undefined,
-            scrapedAt: b.createdAt,
-            source: b.source,
-            confidence: b.confidence,
-        }));
+        this.logger.log(`Getting stored businesses with filters: ${JSON.stringify(filters)}`);
+        try {
+            const businesses = await this.prisma.business.findMany({
+                where: {
+                    ...(filters?.industry && { industry: { contains: filters.industry, mode: 'insensitive' } }),
+                    ...(filters?.location && { addressFormatted: { contains: filters.location, mode: 'insensitive' } }),
+                    ...(filters?.notCalledSince && {
+                        OR: [
+                            { lastCalled: null },
+                            { lastCalled: { lt: filters.notCalledSince } }
+                        ]
+                    }),
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 100,
+            });
+            this.logger.log(`Found ${businesses.length} businesses`);
+            return businesses.map(b => ({
+                id: b.id,
+                name: b.name,
+                phoneNumber: b.phoneNumber || undefined,
+                email: b.email || undefined,
+                address: b.addressFormatted ? { formatted: b.addressFormatted, country: 'USA' } : undefined,
+                website: b.website || undefined,
+                industry: b.industry || undefined,
+                description: b.description || undefined,
+                services: b.services || undefined,
+                scrapedAt: b.createdAt,
+                source: b.source,
+                confidence: b.confidence,
+            }));
+        }
+        catch (error) {
+            this.logger.error(`Error getting stored businesses: ${error.message}`, error.stack);
+            if (error.message.includes('fetch failed') || error.message.includes('Cannot fetch data')) {
+                this.logger.warn('Database connection issue, returning empty business list');
+                return [];
+            }
+            throw error;
+        }
     }
     async generateTestData(filters) {
         const testBusinesses = [
@@ -1058,6 +1070,38 @@ let WebScraperService = WebScraperService_1 = class WebScraperService {
                 }
             }
         });
+    }
+    async deleteBusiness(businessId) {
+        this.logger.log(`Deleting business: ${businessId}`);
+        try {
+            const business = await this.prisma.business.findUnique({
+                where: { id: businessId }
+            });
+            if (!business) {
+                throw new Error(`Business with ID ${businessId} not found`);
+            }
+            await this.prisma.business.delete({
+                where: { id: businessId }
+            });
+            this.logger.log(`Successfully deleted business: ${business.name} (${businessId})`);
+            return {
+                message: `Business "${business.name}" deleted successfully`,
+                deletedId: businessId
+            };
+        }
+        catch (error) {
+            this.logger.error(`Failed to delete business ${businessId}: ${error.message}`, error.stack);
+            if (error.code === 'P2025') {
+                throw new Error(`Business with ID ${businessId} not found`);
+            }
+            if (error.message.includes('fetch failed') || error.message.includes('Cannot fetch data')) {
+                throw new Error('Database connection error. Please try again later.');
+            }
+            if (error.message.includes('not found')) {
+                throw new Error(`Business with ID ${businessId} not found`);
+            }
+            throw new Error(`Failed to delete business: ${error.message}`);
+        }
     }
 };
 exports.WebScraperService = WebScraperService;

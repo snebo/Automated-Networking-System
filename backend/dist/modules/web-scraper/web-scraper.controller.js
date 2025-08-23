@@ -129,6 +129,10 @@ let WebScraperController = WebScraperController_1 = class WebScraperController {
     async getWorkflowResults(workflowId) {
         return this.scraperService.getWorkflowResults(workflowId);
     }
+    async deleteBusiness(businessId) {
+        this.logger.log(`Deleting business with ID: ${businessId}`);
+        return await this.scraperService.deleteBusiness(businessId);
+    }
 };
 exports.WebScraperController = WebScraperController;
 __decorate([
@@ -493,6 +497,30 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], WebScraperController.prototype, "getWorkflowResults", null);
+__decorate([
+    (0, common_1.Delete)('businesses/:businessId'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Delete a business',
+        description: 'Delete a business entry from the database'
+    }),
+    (0, swagger_1.ApiParam)({ name: 'businessId', description: 'Business ID' }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: 'Business deleted successfully',
+        schema: {
+            type: 'object',
+            properties: {
+                message: { type: 'string' },
+                deletedId: { type: 'string' }
+            }
+        }
+    }),
+    (0, swagger_1.ApiResponse)({ status: 404, description: 'Business not found' }),
+    __param(0, (0, common_1.Param)('businessId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], WebScraperController.prototype, "deleteBusiness", null);
 exports.WebScraperController = WebScraperController = WebScraperController_1 = __decorate([
     (0, swagger_1.ApiTags)('web-scraper'),
     (0, common_1.Controller)('scraper'),

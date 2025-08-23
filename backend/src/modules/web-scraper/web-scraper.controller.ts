@@ -6,6 +6,7 @@ import {
   Query,
   Param,
   Put,
+  Delete,
   Logger,
 } from '@nestjs/common';
 import { 
@@ -442,5 +443,28 @@ export class WebScraperController {
   @ApiParam({ name: 'workflowId', description: 'Workflow ID' })
   async getWorkflowResults(@Param('workflowId') workflowId: string) {
     return this.scraperService.getWorkflowResults(workflowId);
+  }
+
+  @Delete('businesses/:businessId')
+  @ApiOperation({ 
+    summary: 'Delete a business',
+    description: 'Delete a business entry from the database'
+  })
+  @ApiParam({ name: 'businessId', description: 'Business ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Business deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        deletedId: { type: 'string' }
+      }
+    }
+  })
+  @ApiResponse({ status: 404, description: 'Business not found' })
+  async deleteBusiness(@Param('businessId') businessId: string) {
+    this.logger.log(`Deleting business with ID: ${businessId}`);
+    return await this.scraperService.deleteBusiness(businessId);
   }
 }

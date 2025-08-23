@@ -74,4 +74,8 @@ export declare class WebScraperService {
     private updateCallStatuses;
     getScriptById(scriptId: string): Promise<any>;
     getAllScripts(): Promise<any[]>;
+    deleteBusiness(businessId: string): Promise<{
+        message: string;
+        deletedId: string;
+    }>;
 }

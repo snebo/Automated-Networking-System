@@ -41,4 +41,8 @@ export declare class WebScraperController {
     executeCompleteWorkflow(workflowData: UnifiedWorkflowDto): Promise<WorkflowExecutionResponse>;
     getWorkflowStatus(workflowId: string): Promise<any>;
     getWorkflowResults(workflowId: string): Promise<any>;
+    deleteBusiness(businessId: string): Promise<{
+        message: string;
+        deletedId: string;
+    }>;
 }

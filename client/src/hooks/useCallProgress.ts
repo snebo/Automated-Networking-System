@@ -82,12 +82,18 @@ export const useCallProgress = (callSid?: string) => {
     const statusEvents = progress.filter(e => 
       e.type === 'call_started' || 
       e.type === 'call_ended' || 
-      e.type === 'call_terminated'
+      e.type === 'call_terminated' ||
+      e.type === 'call_failed'
     );
     
     if (statusEvents.length === 0) return null;
     
-    const latest = statusEvents[statusEvents.length - 1];
+    // Sort by timestamp to get the most recent status
+    const sortedEvents = statusEvents.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    const latest = sortedEvents[0];
     
     switch (latest.type) {
       case 'call_started':
@@ -95,6 +101,7 @@ export const useCallProgress = (callSid?: string) => {
       case 'call_ended':
         return 'completed';
       case 'call_terminated':
+      case 'call_failed':
         return 'failed';
       default:
         return null;
@@ -102,13 +109,27 @@ export const useCallProgress = (callSid?: string) => {
   };
 
   const getTranscripts = (): Array<{ speaker: string; text: string; timestamp: Date }> => {
-    return progress
+    const transcriptEvents = progress
       .filter(e => e.type === 'transcript' || e.type === 'agent_response')
       .map(e => ({
         speaker: e.type === 'agent_response' ? 'agent' : 'ivr',
         text: e.data.text || e.data.transcript || '',
         timestamp: e.timestamp,
+        callSid: e.callSid,
       }));
+
+    // Remove duplicates based on text content and timestamp
+    const uniqueTranscripts = transcriptEvents.filter((transcript, index, arr) => {
+      return !arr.slice(0, index).some(prev => 
+        prev.text === transcript.text && 
+        Math.abs(new Date(prev.timestamp).getTime() - new Date(transcript.timestamp).getTime()) < 1000
+      );
+    });
+
+    // Sort by timestamp (oldest first - top-down approach)
+    return uniqueTranscripts.sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
   };
 
   const getIVROptions = () => {

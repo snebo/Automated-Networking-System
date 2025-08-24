@@ -21,7 +21,7 @@ export default function CallCard({
   expanded, 
   onToggleExpanded 
 }: CallCardProps) {
-  const { status, transcripts, ivrOptions, aiDecisions, connected } = useCallProgress(callSid);
+  const { status, transcripts, ivrOptions, aiDecisions, connected, progress } = useCallProgress(callSid);
   
   // Use WebSocket status if available, otherwise use initial status
   const currentStatus = status || initialStatus;
@@ -66,7 +66,12 @@ export default function CallCard({
 
   const getDuration = () => {
     if (currentStatus === 'completed' || currentStatus === 'failed') {
-      const endTime = new Date();
+      // Try to get actual end time from progress events, otherwise use current time
+      const endEvent = [...(progress || [])]
+        .reverse()
+        .find(e => e.type === 'call_ended' || e.type === 'call_terminated' || e.type === 'call_failed');
+      
+      const endTime = endEvent ? new Date(endEvent.timestamp) : new Date();
       const duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
       const minutes = Math.floor(duration / 60);
       const seconds = duration % 60;
@@ -110,8 +115,14 @@ export default function CallCard({
       {expanded && (
         <div className="border-t border-gray-100 p-4 space-y-4">
           {/* Call ID */}
-          <div className="text-xs text-gray-500">
-            Call ID: {callSid.slice(-8)}
+          <div className="text-xs text-gray-500 flex items-center justify-between">
+            <span>Call ID: {callSid.slice(-8)}</span>
+            {/* Show retry count if this is a retry attempt */}
+            {callSid.startsWith('retry-') && (
+              <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs">
+                Retry in progress...
+              </span>
+            )}
           </div>
 
           {/* IVR Options */}

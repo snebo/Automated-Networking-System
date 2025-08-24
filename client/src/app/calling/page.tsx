@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Phone, PhoneCall, Headphones, Bot, Users } from 'lucide-react';
 import { telephonyApi, scraperApi, conversationApi } from '@/lib/api';
 import { Business, TranscriptEntry, IVRDecision } from '@/types';
@@ -18,6 +18,9 @@ interface CallCard {
   transcript: TranscriptEntry[];
   ivrDecisions: IVRDecision[];
   expanded: boolean;
+  retryCount?: number;
+  originalGoal?: string;
+  goalAchieved?: boolean;
 }
 
 export default function CallingPage() {
@@ -25,6 +28,8 @@ export default function CallingPage() {
   const [activeCalls, setActiveCalls] = useState<CallCard[]>([]);
   const [script, setScript] = useState('');
   const [goal, setGoal] = useState('');
+  const [autoRetry, setAutoRetry] = useState(true);
+  const [maxRetries, setMaxRetries] = useState(2);
   const queryClient = useQueryClient();
 
   const { data: businesses = [], isLoading: businessesLoading } = useQuery({
@@ -35,8 +40,19 @@ export default function CallingPage() {
   const initiateCallMutation = useMutation({
     mutationFn: ({ phoneNumber, scriptId, goal, companyName }: { phoneNumber: string; scriptId?: string; goal?: string; companyName?: string }) =>
       telephonyApi.initiateCall(phoneNumber, scriptId, goal, companyName),
-    onSuccess: (data) => {
-      if (selectedBusiness) {
+    onSuccess: (data, variables) => {
+      // Check if this is a retry call by looking for temporary retry ID
+      const retryCallIndex = activeCalls.findIndex(call => call.callSid.startsWith('retry-'));
+      
+      if (retryCallIndex >= 0) {
+        // Update existing retry call with real SID
+        setActiveCalls(prev => prev.map((call, index) => 
+          index === retryCallIndex 
+            ? { ...call, callSid: data.callSid }
+            : call
+        ));
+      } else if (selectedBusiness) {
+        // Create new call
         const newCall: CallCard = {
           callSid: data.callSid,
           business: selectedBusiness,
@@ -45,6 +61,9 @@ export default function CallingPage() {
           transcript: [],
           ivrDecisions: [],
           expanded: true,
+          retryCount: 0,
+          originalGoal: variables.goal,
+          goalAchieved: false,
         };
         setActiveCalls(prev => [newCall, ...prev]);
       }
@@ -100,6 +119,90 @@ export default function CallingPage() {
       call.callSid === callSid ? { ...call, expanded: !call.expanded } : call
     ));
   };
+
+  // Auto-retry logic
+  const retryCall = (originalCall: CallCard) => {
+    if (originalCall.business && originalCall.originalGoal) {
+      const phoneNumber = getPhoneForCall(originalCall.business.phoneNumber);
+      if (phoneNumber && (originalCall.retryCount || 0) < maxRetries) {
+        const newRetryCount = (originalCall.retryCount || 0) + 1;
+        console.log(`Auto-retrying call for ${originalCall.business.name} (attempt ${newRetryCount}/${maxRetries})`);
+        
+        // Create retry call with updated retry count
+        const retryCallData: CallCard = {
+          callSid: `retry-${Date.now()}`, // Temporary ID until we get the real one
+          business: originalCall.business,
+          status: 'queued',
+          startTime: new Date(),
+          transcript: [],
+          ivrDecisions: [],
+          expanded: true,
+          retryCount: newRetryCount,
+          originalGoal: originalCall.originalGoal,
+          goalAchieved: false,
+        };
+        
+        // Add retry call to active calls first
+        setActiveCalls(prev => [retryCallData, ...prev]);
+        
+        // Then initiate the actual call
+        initiateCallMutation.mutate({ 
+          phoneNumber,
+          scriptId: undefined,
+          goal: originalCall.originalGoal,
+          companyName: originalCall.business.name
+        });
+      }
+    }
+  };
+
+  // Check for goal achievement (simple heuristic based on transcript content)
+  const checkGoalAchievement = (call: CallCard, transcripts: any[]): boolean => {
+    if (!call.originalGoal) return false;
+    
+    const goalLower = call.originalGoal.toLowerCase();
+    const transcriptText = transcripts.map(t => t.text).join(' ').toLowerCase();
+    
+    // Simple goal achievement detection
+    const achievementIndicators = [
+      'transferred', 'transfer you', 'hold please', 'one moment',
+      'speak with', 'connect you', 'available to talk',
+      'manager', 'director', 'doctor', 'physician'
+    ];
+    
+    const failureIndicators = [
+      'voicemail', 'leave a message', 'not available',
+      'closed', 'after hours', 'try again later'
+    ];
+    
+    const hasAchievement = achievementIndicators.some(indicator => transcriptText.includes(indicator));
+    const hasFailure = failureIndicators.some(indicator => transcriptText.includes(indicator));
+    
+    // If we detect achievement indicators and no failure indicators, consider goal achieved
+    return hasAchievement && !hasFailure;
+  };
+
+  // Monitor call status changes for auto-retry
+  useEffect(() => {
+    if (!autoRetry) return;
+
+    activeCalls.forEach(call => {
+      // Only process completed or failed calls that haven't been processed yet
+      if ((call.status === 'completed' || call.status === 'failed') && !call.goalAchieved) {
+        // Mark as processed to prevent multiple retries
+        setActiveCalls(prev => prev.map(c => 
+          c.callSid === call.callSid ? { ...c, goalAchieved: true } : c
+        ));
+
+        // For failed calls or calls that didn't achieve goal, retry
+        if (call.status === 'failed' || !checkGoalAchievement(call, call.transcript)) {
+          if ((call.retryCount || 0) < maxRetries) {
+            setTimeout(() => retryCall(call), 5000); // Wait 5 seconds before retry
+          }
+        }
+      }
+    });
+  }, [activeCalls, autoRetry, maxRetries]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
@@ -191,6 +294,33 @@ export default function CallingPage() {
                         onChange={(e) => setGoal(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
+                    </div>
+
+                    {/* Auto-retry settings */}
+                    <div className="border-t border-gray-200 pt-3 mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700">Auto-retry failed calls</label>
+                        <input
+                          type="checkbox"
+                          checked={autoRetry}
+                          onChange={(e) => setAutoRetry(e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+                      {autoRetry && (
+                        <div className="flex items-center space-x-2">
+                          <label className="text-xs text-gray-600">Max retries:</label>
+                          <select
+                            value={maxRetries}
+                            onChange={(e) => setMaxRetries(Number(e.target.value))}
+                            className="text-xs border border-gray-300 rounded px-2 py-1"
+                          >
+                            <option value={1}>1</option>
+                            <option value={2}>2</option>
+                            <option value={3}>3</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-2">

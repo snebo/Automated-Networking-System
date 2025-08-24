@@ -193,13 +193,13 @@ export default function WorkflowPage() {
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
               <div className="flex flex-col sm:flex-row gap-4 flex-1">
-                <div className="relative">
+                <div className="relative flex-1 max-w-md">
                   <input
                     type="text"
                     placeholder="Search businesses or contacts..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-w-80"
+                    className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   />
                 </div>
                 

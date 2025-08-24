@@ -16,9 +16,28 @@ export default function AnimatedSection({
   delay = 0 
 }: AnimatedSectionProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Check for reduced motion preference
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReducedMotion(mediaQuery.matches);
+    
+    const handleChange = () => setReducedMotion(mediaQuery.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  useEffect(() => {
+    // Skip animations on mobile or when user prefers reduced motion
+    const isMobile = window.innerWidth < 768;
+    if (reducedMotion || isMobile) {
+      setIsVisible(true);
+      return;
+    }
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -42,22 +61,27 @@ export default function AnimatedSection({
         observer.unobserve(ref.current);
       }
     };
-  }, [delay]);
+  }, [delay, reducedMotion]);
 
   const getAnimationClass = () => {
-    const baseClass = 'transition-all duration-1000 ease-out';
+    // Skip animations on mobile or when user prefers reduced motion
+    if (reducedMotion || (typeof window !== 'undefined' && window.innerWidth < 768)) {
+      return 'opacity-100';
+    }
+    
+    const baseClass = 'transition-all duration-700 ease-out';
     
     switch (animation) {
       case 'fadeInUp':
-        return `${baseClass} ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`;
+        return `${baseClass} ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`;
       case 'fadeInLeft':
-        return `${baseClass} ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'}`;
+        return `${baseClass} ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`;
       case 'fadeInRight':
-        return `${baseClass} ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'}`;
+        return `${baseClass} ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'}`;
       case 'scaleIn':
-        return `${baseClass} ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`;
+        return `${baseClass} ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-98'}`;
       case 'slideInUp':
-        return `${baseClass} ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`;
+        return `${baseClass} ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`;
       default:
         return `${baseClass} ${isVisible ? 'opacity-100' : 'opacity-0'}`;
     }

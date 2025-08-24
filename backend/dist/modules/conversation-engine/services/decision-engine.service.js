@@ -68,6 +68,34 @@ let DecisionEngineService = DecisionEngineService_1 = class DecisionEngineServic
         session.currentState = 'listening';
         session.actionHistory.push(`Reached human: "${event.transcript}"`);
     }
+    handleTranscriptReceived(event) {
+        const session = this.activeSessions.get(event.callSid);
+        if (!session) {
+            return;
+        }
+        if (this.shouldTerminateCall(event.transcript)) {
+            this.logger.log(`🔴 TERMINATING CALL ${event.callSid.slice(-8)} - Business closed or no viable options detected`);
+            this.logger.log(`📝 Termination trigger: "${event.transcript.substring(0, 100)}${event.transcript.length > 100 ? '...' : ''}"`);
+            this.eventEmitter.emit('ai.hangup', {
+                callSid: event.callSid,
+                reason: 'Business closed - detected from transcript'
+            });
+            this.activeSessions.delete(event.callSid);
+            return;
+        }
+    }
+    handleCallEnded(event) {
+        if (this.activeSessions.has(event.callSid)) {
+            this.logger.log(`🔴 Call ended - cleaning up AI session for ${event.callSid.slice(-8)}`);
+            this.activeSessions.delete(event.callSid);
+        }
+    }
+    handleCallTerminated(event) {
+        if (this.activeSessions.has(event.callSid)) {
+            this.logger.log(`🔴 Call terminated - cleaning up AI session for ${event.callSid.slice(-8)}`);
+            this.activeSessions.delete(event.callSid);
+        }
+    }
     async handleIVRMenuDetected(event) {
         const session = this.activeSessions.get(event.callSid);
         if (!session) {
@@ -78,7 +106,7 @@ let DecisionEngineService = DecisionEngineService_1 = class DecisionEngineServic
             return;
         }
         if (this.shouldTerminateCall(event.fullText)) {
-            this.logger.log(`Terminating call ${event.callSid} - Business closed or no viable options`);
+            this.logger.log(`🔴 TERMINATING CALL ${event.callSid.slice(-8)} - Business closed or no viable options (IVR handler)`);
             this.eventEmitter.emit('ai.hangup', {
                 callSid: event.callSid,
                 reason: 'Business closed or no viable navigation path'
@@ -99,7 +127,15 @@ let DecisionEngineService = DecisionEngineService_1 = class DecisionEngineServic
                     fullText: event.fullText,
                 },
             };
-            const decision = await this.openaiService.makeIVRDecision(context);
+            const decisionPromise = this.openaiService.makeIVRDecision(context);
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('AI decision timeout')), 15000);
+            });
+            const decision = await Promise.race([decisionPromise, timeoutPromise]);
+            if (!this.activeSessions.has(event.callSid)) {
+                this.logger.warn(`🔴 Call ${event.callSid.slice(-8)} ended during AI decision making - canceling decision`);
+                return;
+            }
             session.lastDecision = decision;
             session.actionHistory.push(`Selected option ${decision.selectedOption}: ${event.options.find(o => o.key === decision.selectedOption)?.description || 'unknown'}`);
             session.currentState = 'acting';
@@ -148,30 +184,64 @@ let DecisionEngineService = DecisionEngineService_1 = class DecisionEngineServic
     }
     shouldTerminateCall(fullText) {
         const text = fullText.toLowerCase();
-        const closedIndicators = [
+        const strongClosedIndicators = [
             'we are closed',
             'we are currently closed',
-            'business hours',
-            'after hours',
-            'closed now',
-            'closed today',
-            'closed for the',
+            'currently closed',
             'office is closed',
+            'we\'re closed',
+            'closed for the day',
+            'closed today',
+            'closed now',
             'not open',
-            'closed on',
-            'closed until',
-            'holiday',
+            'after hours',
+            'outside business hours',
+            'outside of business hours',
+            'call back during regular business hours',
+            'call back during business hours',
+            'please call back during',
+            'try your call again at a later time',
+            'we are currently unavailable',
+            'currently unavailable to take your call'
+        ];
+        const hasStrongIndicator = strongClosedIndicators.some(indicator => text.includes(indicator));
+        if (hasStrongIndicator) {
+            return true;
+        }
+        const businessHoursPatterns = [
+            /hours of operation are .* to .*/i,
+            /our hours are .* to .*/i,
+            /business hours .* to .*/i,
+            /open .* to .* monday/i,
+            /monday through friday .* to .*/i
+        ];
+        const hasClosure = businessHoursPatterns.some(pattern => pattern.test(text)) &&
+            (text.includes('closed') || text.includes('call back'));
+        if (hasClosure) {
+            return true;
+        }
+        const serviceIssues = [
             'no longer in service',
             'disconnected',
             'not in service',
-            'number cannot be completed'
+            'number cannot be completed',
+            'number you have dialed is not',
+            'this number is not in service'
         ];
-        const isClosed = closedIndicators.some(indicator => text.includes(indicator));
+        const hasServiceIssue = serviceIssues.some(indicator => text.includes(indicator));
+        if (hasServiceIssue) {
+            return true;
+        }
         const hasNoOptions = !text.includes('press') &&
             !text.includes('dial') &&
             !text.includes('say') &&
-            text.length > 50;
-        return isClosed || (hasNoOptions && text.includes('goodbye'));
+            !text.includes('for ') &&
+            text.length > 100;
+        const hasGoodbyeOrEnd = text.includes('goodbye') ||
+            text.includes('thank you') ||
+            text.includes('have a') ||
+            text.includes('try again later');
+        return hasNoOptions && hasGoodbyeOrEnd;
     }
     async generateCallSummary(session) {
         const context = {
@@ -276,6 +346,24 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], DecisionEngineService.prototype, "handleHumanReached", null);
+__decorate([
+    (0, event_emitter_1.OnEvent)('stt.final'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], DecisionEngineService.prototype, "handleTranscriptReceived", null);
+__decorate([
+    (0, event_emitter_1.OnEvent)('call.ended'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], DecisionEngineService.prototype, "handleCallEnded", null);
+__decorate([
+    (0, event_emitter_1.OnEvent)('call.terminated'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], DecisionEngineService.prototype, "handleCallTerminated", null);
 __decorate([
     (0, event_emitter_1.OnEvent)('ivr.menu_detected'),
     __metadata("design:type", Function),

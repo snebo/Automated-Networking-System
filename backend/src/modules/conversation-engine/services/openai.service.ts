@@ -144,23 +144,37 @@ CONTEXT:
 ${previousActionsText}
 
 INSTRUCTIONS:
-Analyze the IVR menu options and select the best option to achieve the goal "${context.goal}".
-Consider the option descriptions, confidence levels, and how they align with the stated goal.
+You are calling a healthcare facility/medical organization on behalf of a business development professional.
+Your goal is: "${context.goal}"
+
+DECISION PRIORITY RULES:
+1. **PHYSICIAN RECRUITER/RECRUITMENT**: Look for "physician referral", "medical staff", "recruitment", "HR", "human resources", "administration", "business office"
+2. **CONTACT SPECIFIC PERSON**: Look for "directory", "extension", "operator", "administration", "management", "office"  
+3. **GENERAL INQUIRIES**: If unsure, select "operator", "general inquiries", "other inquiries", "main menu", "directory"
+4. **AVOID**: Patient-specific options (unless they lead to admin), emergency lines, specific medical departments
+
+KEYWORD MATCHING PRIORITY:
+- "physician recruiter" or "physician referral" → PERFECT MATCH (high confidence)
+- "human resources" or "HR" → EXCELLENT MATCH  
+- "administration" or "business office" → VERY GOOD MATCH
+- "operator" or "directory" → GOOD FALLBACK
+- "other inquiries" or "general inquiries" → ACCEPTABLE FALLBACK
+- Patient services, specific departments → AVOID unless no better option
+
+Analyze each option carefully and score them based on how well they align with finding administrative/business contacts, not patient services.
 
 Respond with a JSON object containing:
 {
   "selectedOption": "the key to press (1, 2, 3, etc.)",
-  "reasoning": "brief explanation of why this option was chosen",
-  "response": "what the AI should say before/after making the selection",
+  "reasoning": "detailed explanation of why this option best matches the goal, including what keywords triggered the selection",
+  "response": "",
   "confidence": 0.95,
   "nextAction": "press_key"
 }
 
 nextAction options:
 - "press_key": Press the DTMF key and continue
-- "speak": Speak to a human operator  
-- "wait": Wait for more information
-- "hangup": End the call (if no suitable option)
+- "hangup": End the call if no viable option exists
 
 Choose the option most likely to help achieve: "${context.goal}"
 `;
@@ -172,38 +186,45 @@ Choose the option most likely to help achieve: "${context.goal}"
     const goal = context.goal.toLowerCase();
     const options = context.detectedMenu.options;
 
-    // Medical-focused keyword matching
-    const goalKeywords = {
-      manager: ['administration', 'admin', 'office', 'management', 'director', 'manager', 'ceo', 'executive'],
-      doctor: ['physician', 'doctor', 'medical', 'provider', 'specialist', 'practitioner', 'clinic'],
-      appointment: ['appointment', 'scheduling', 'schedule', 'new patient', 'existing patient'],
-      billing: ['billing', 'payment', 'insurance', 'financial', 'account'],
-      operator: ['operator', 'representative', 'agent', 'person', 'human', 'speak', 'customer service', 'patient relations'],
-      emergency: ['emergency', 'urgent', '911'] // To avoid
+    // Healthcare recruitment-focused scoring
+    const scoringKeywords = {
+      perfect: ['physician referral', 'physician recruiter', 'recruitment', 'recruiting'], // Score: 100
+      excellent: ['human resources', 'hr', 'administration', 'business office'], // Score: 90
+      veryGood: ['admin', 'management', 'director', 'manager', 'office'], // Score: 80
+      good: ['operator', 'directory', 'extension', 'main'], // Score: 70
+      acceptable: ['general inquiries', 'other inquiries', 'information'], // Score: 60
+      avoid: ['patient', 'appointment', 'billing', 'emergency', 'medical records'] // Score: -10
     };
 
     // Find best matching option
     let bestOption = options[0]; // Default to first option
-    let bestScore = 0;
+    let bestScore = -100; // Start very low
 
     for (const option of options) {
       const description = option.description.toLowerCase();
       let score = 0;
 
-      // Check each goal category
-      for (const [category, keywords] of Object.entries(goalKeywords)) {
-        if (goal.includes(category)) {
-          for (const keyword of keywords) {
-            if (description.includes(keyword)) {
-              score += 1;
-              break;
-            }
-          }
-        }
+      // Score based on keyword categories
+      if (scoringKeywords.perfect.some(keyword => description.includes(keyword))) {
+        score = 100;
+      } else if (scoringKeywords.excellent.some(keyword => description.includes(keyword))) {
+        score = 90;
+      } else if (scoringKeywords.veryGood.some(keyword => description.includes(keyword))) {
+        score = 80;
+      } else if (scoringKeywords.good.some(keyword => description.includes(keyword))) {
+        score = 70;
+      } else if (scoringKeywords.acceptable.some(keyword => description.includes(keyword))) {
+        score = 60;
+      } else if (scoringKeywords.avoid.some(keyword => description.includes(keyword))) {
+        score = -10;
+      } else {
+        score = 30; // Neutral score for unknown options
       }
 
       // Bonus for higher confidence
-      score += option.confidence * 0.5;
+      score += option.confidence * 10;
+
+      this.logger.log(`Option ${option.key}: "${description}" → Score: ${score}`);
 
       if (score > bestScore) {
         bestScore = score;
@@ -211,11 +232,13 @@ Choose the option most likely to help achieve: "${context.goal}"
       }
     }
 
+    this.logger.log(`🎯 Heuristic selection: Option ${bestOption.key} with score ${bestScore}`);
+
     return {
       selectedOption: bestOption.key,
-      reasoning: `Heuristic selection based on keyword matching for goal: ${context.goal}`,
-      response: `I've selected option ${bestOption.key} for ${bestOption.description} to help with ${context.goal}.`,
-      confidence: 0.7,
+      reasoning: `Heuristic selection: "${bestOption.description}" scored ${bestScore} points for goal "${context.goal}"`,
+      response: '',
+      confidence: Math.min(0.9, bestScore / 100),
       nextAction: 'press_key'
     };
   }

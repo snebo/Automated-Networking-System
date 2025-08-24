@@ -85,6 +85,51 @@ export class DecisionEngineService {
     session.actionHistory.push(`Reached human: "${event.transcript}"`);
   }
 
+  @OnEvent('stt.final')
+  handleTranscriptReceived(event: {
+    callSid: string;
+    transcript: string;
+    confidence: number;
+    timestamp: Date;
+  }) {
+    const session = this.activeSessions.get(event.callSid);
+    if (!session) {
+      return; // No active session, let other handlers process
+    }
+
+    // Check if we should terminate the call based on any transcript
+    if (this.shouldTerminateCall(event.transcript)) {
+      this.logger.log(`🔴 TERMINATING CALL ${event.callSid.slice(-8)} - Business closed or no viable options detected`);
+      this.logger.log(`📝 Termination trigger: "${event.transcript.substring(0, 100)}${event.transcript.length > 100 ? '...' : ''}"`);
+      
+      this.eventEmitter.emit('ai.hangup', {
+        callSid: event.callSid,
+        reason: 'Business closed - detected from transcript'
+      });
+      
+      this.activeSessions.delete(event.callSid);
+      return;
+    }
+  }
+
+  @OnEvent('call.ended')
+  handleCallEnded(event: { callSid: string }) {
+    // Clean up active session when call ends to prevent race conditions
+    if (this.activeSessions.has(event.callSid)) {
+      this.logger.log(`🔴 Call ended - cleaning up AI session for ${event.callSid.slice(-8)}`);
+      this.activeSessions.delete(event.callSid);
+    }
+  }
+
+  @OnEvent('call.terminated')  
+  handleCallTerminated(event: { callSid: string }) {
+    // Clean up active session when call is terminated
+    if (this.activeSessions.has(event.callSid)) {
+      this.logger.log(`🔴 Call terminated - cleaning up AI session for ${event.callSid.slice(-8)}`);
+      this.activeSessions.delete(event.callSid);
+    }
+  }
+
   @OnEvent('ivr.menu_detected')
   async handleIVRMenuDetected(event: {
     callSid: string;
@@ -103,9 +148,9 @@ export class DecisionEngineService {
       return;
     }
     
-    // Check if we should terminate the call based on the IVR message
+    // Additional check - if we somehow got here but should terminate, still do it
     if (this.shouldTerminateCall(event.fullText)) {
-      this.logger.log(`Terminating call ${event.callSid} - Business closed or no viable options`);
+      this.logger.log(`🔴 TERMINATING CALL ${event.callSid.slice(-8)} - Business closed or no viable options (IVR handler)`);
       this.eventEmitter.emit('ai.hangup', {
         callSid: event.callSid,
         reason: 'Business closed or no viable navigation path'
@@ -129,7 +174,20 @@ export class DecisionEngineService {
         },
       };
 
-      const decision = await this.openaiService.makeIVRDecision(context);
+      // Add timeout for AI decision making (15 seconds)
+      const decisionPromise = this.openaiService.makeIVRDecision(context);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('AI decision timeout')), 15000);
+      });
+
+      const decision = await Promise.race([decisionPromise, timeoutPromise]);
+      
+      // Double-check call is still active before proceeding
+      if (!this.activeSessions.has(event.callSid)) {
+        this.logger.warn(`🔴 Call ${event.callSid.slice(-8)} ended during AI decision making - canceling decision`);
+        return;
+      }
+      
       session.lastDecision = decision;
 
       // Record the action
@@ -190,36 +248,80 @@ export class DecisionEngineService {
   private shouldTerminateCall(fullText: string): boolean {
     const text = fullText.toLowerCase();
     
-    // Indicators that business is closed
-    const closedIndicators = [
+    // Strong indicators that business is closed (immediate termination)
+    const strongClosedIndicators = [
       'we are closed',
       'we are currently closed',
-      'business hours',
-      'after hours',
-      'closed now',
-      'closed today',
-      'closed for the',
+      'currently closed',
       'office is closed',
+      'we\'re closed',
+      'closed for the day',
+      'closed today',
+      'closed now',
       'not open',
-      'closed on',
-      'closed until',
-      'holiday',
+      'after hours',
+      'outside business hours',
+      'outside of business hours',
+      'call back during regular business hours',
+      'call back during business hours',
+      'please call back during',
+      'try your call again at a later time',
+      'we are currently unavailable',
+      'currently unavailable to take your call'
+    ];
+
+    // Check for strong indicators first
+    const hasStrongIndicator = strongClosedIndicators.some(indicator => text.includes(indicator));
+    
+    if (hasStrongIndicator) {
+      return true;
+    }
+
+    // Pattern-based detection for business hours mentions
+    const businessHoursPatterns = [
+      /hours of operation are .* to .*/i,
+      /our hours are .* to .*/i,
+      /business hours .* to .*/i,
+      /open .* to .* monday/i,
+      /monday through friday .* to .*/i
+    ];
+
+    const hasClosure = businessHoursPatterns.some(pattern => pattern.test(text)) && 
+                      (text.includes('closed') || text.includes('call back'));
+
+    if (hasClosure) {
+      return true;
+    }
+
+    // Disconnect/service issues
+    const serviceIssues = [
       'no longer in service',
       'disconnected',
       'not in service',
-      'number cannot be completed'
+      'number cannot be completed',
+      'number you have dialed is not',
+      'this number is not in service'
     ];
+
+    const hasServiceIssue = serviceIssues.some(indicator => text.includes(indicator));
     
-    // Check if any closed indicators are present
-    const isClosed = closedIndicators.some(indicator => text.includes(indicator));
+    if (hasServiceIssue) {
+      return true;
+    }
     
-    // Check if there's no menu options (just a message)
+    // Check if there's no menu options but long message (likely informational/closed)
     const hasNoOptions = !text.includes('press') && 
                         !text.includes('dial') && 
                         !text.includes('say') &&
-                        text.length > 50; // Long message with no options
+                        !text.includes('for ') && // generic "for assistance" type phrases
+                        text.length > 100; // Longer threshold
+
+    const hasGoodbyeOrEnd = text.includes('goodbye') || 
+                           text.includes('thank you') ||
+                           text.includes('have a') ||
+                           text.includes('try again later');
     
-    return isClosed || (hasNoOptions && text.includes('goodbye'));
+    return hasNoOptions && hasGoodbyeOrEnd;
   }
 
   private async generateCallSummary(session: CallSession): Promise<string> {

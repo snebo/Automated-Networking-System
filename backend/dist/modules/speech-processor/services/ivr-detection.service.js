@@ -84,9 +84,11 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
             return null;
         }
         const ivrMatches = [
-            ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+(?:for|to)\s+([^,.]+?)(?=\.|,|press|$)/gi),
-            ...normalizedText.matchAll(/for\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
-            ...normalizedText.matchAll(/to\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
+            ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+(?:for|to)\s+([^,.]+?(?:\s+\w+)*?)(?=\s*[.,]|\s+press|\s+if\s+you|\s+to\s+(?:schedule|register|receive)\s|\s*$)/gi),
+            ...normalizedText.matchAll(/for\s+([^,.]+?(?:\s+\w+)*?),?\s+press\s+([0-9*#]+)/gi),
+            ...normalizedText.matchAll(/to\s+([^,.]+?(?:\s+\w+)*?),?\s+press\s+([0-9*#]+)/gi),
+            ...normalizedText.matchAll(/if\s+you\s+(?:are|want|need|require)\s+([^,.]+?(?:\s+\w+)*?),?\s+press\s+([0-9*#]+)/gi),
+            ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+if\s+you\s+(?:are|want|need|require)\s+([^,.]+?(?:\s+\w+)*?)(?=\s*[.,]|\s+press|\s+if\s+you|\s*$)/gi),
         ];
         for (const match of ivrMatches) {
             let key;
@@ -95,13 +97,21 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
                 key = match[1];
                 description = match[2];
             }
+            else if (match[0].startsWith('press') && /press\s+[0-9*#]+\s+if\s+you/.test(match[0])) {
+                key = match[1];
+                description = match[2];
+            }
             else if (/(?:for|to)\s+.+\s+press\s+[0-9*#]+/.test(match[0])) {
                 key = match[2];
                 description = match[1];
             }
-            else {
+            else if (match[0].startsWith('if you')) {
                 key = match[2];
                 description = match[1];
+            }
+            else {
+                key = match[2] || match[1];
+                description = match[1] || match[2];
             }
             if (key && description) {
                 const cleanDescription = this.cleanDescription(description);
@@ -254,14 +264,30 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
         return Math.min(avgOptionConfidence + optionCountBonus + phraseBonus, 1.0);
     }
     deduplicateOptions(options) {
-        const seen = new Set();
-        return options.filter((option) => {
-            const key = option.key + ':' + option.description;
-            if (seen.has(key)) {
-                return false;
+        const keyMap = new Map();
+        for (const option of options) {
+            const existingOption = keyMap.get(option.key);
+            if (!existingOption) {
+                keyMap.set(option.key, option);
             }
-            seen.add(key);
-            return true;
+            else {
+                const currentDesc = option.description.length;
+                const existingDesc = existingOption.description.length;
+                const currentConfidence = option.confidence;
+                const existingConfidence = existingOption.confidence;
+                if (currentDesc > existingDesc ||
+                    (currentDesc === existingDesc && currentConfidence > existingConfidence)) {
+                    keyMap.set(option.key, option);
+                }
+            }
+        }
+        return Array.from(keyMap.values()).sort((a, b) => {
+            const aKey = a.key;
+            const bKey = b.key;
+            if (!isNaN(Number(aKey)) && !isNaN(Number(bKey))) {
+                return Number(aKey) - Number(bKey);
+            }
+            return aKey.localeCompare(bKey);
         });
     }
     suggestOption(options, goal) {

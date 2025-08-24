@@ -121,33 +121,45 @@ export class IVRDetectionService {
       return null;
     }
 
-    // Simplified pattern matching for common IVR phrases
+    // Enhanced pattern matching for complex IVR menus
     const ivrMatches = [
-      // "press X for Y" or "press X to Y"
-      ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+(?:for|to)\s+([^,.]+?)(?=\.|,|press|$)/gi),
-      // "for Y press X"
-      ...normalizedText.matchAll(/for\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
-      // "to Y press X"
-      ...normalizedText.matchAll(/to\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
+      // "press X for Y" or "press X to Y" - capture longer descriptions
+      ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+(?:for|to)\s+([^,.]+?(?:\s+\w+)*?)(?=\s*[.,]|\s+press|\s+if\s+you|\s+to\s+(?:schedule|register|receive)\s|\s*$)/gi),
+      // "for Y press X" or "for Y, press X"  
+      ...normalizedText.matchAll(/for\s+([^,.]+?(?:\s+\w+)*?),?\s+press\s+([0-9*#]+)/gi),
+      // "to Y press X" or "to Y, press X"
+      ...normalizedText.matchAll(/to\s+([^,.]+?(?:\s+\w+)*?),?\s+press\s+([0-9*#]+)/gi),
+      // "if you are/want/need X, press Y" pattern (common in healthcare)
+      ...normalizedText.matchAll(/if\s+you\s+(?:are|want|need|require)\s+([^,.]+?(?:\s+\w+)*?),?\s+press\s+([0-9*#]+)/gi),
+      // "press X if you are/want/need Y"
+      ...normalizedText.matchAll(/press\s+([0-9*#]+)\s+if\s+you\s+(?:are|want|need|require)\s+([^,.]+?(?:\s+\w+)*?)(?=\s*[.,]|\s+press|\s+if\s+you|\s*$)/gi),
     ];
 
     for (const match of ivrMatches) {
       let key: string;
       let description: string;
 
-      // Check the actual pattern used based on match structure
+      // Determine pattern type and extract key/description accordingly
       if (match[0].startsWith('press') && /press\s+[0-9*#]+\s+(?:for|to)/.test(match[0])) {
         // "press X for/to Y" format: press [key] for/to [description]
+        key = match[1];
+        description = match[2];
+      } else if (match[0].startsWith('press') && /press\s+[0-9*#]+\s+if\s+you/.test(match[0])) {
+        // "press X if you Y" format: press [key] if you [description]
         key = match[1];
         description = match[2];
       } else if (/(?:for|to)\s+.+\s+press\s+[0-9*#]+/.test(match[0])) {
         // "for/to Y press X" format: for/to [description] press [key]
         key = match[2];
         description = match[1];
-      } else {
-        // Default fallback
+      } else if (match[0].startsWith('if you')) {
+        // "if you Y, press X" format: if you [description], press [key]
         key = match[2];
         description = match[1];
+      } else {
+        // Default fallback - assume second capture is key, first is description
+        key = match[2] || match[1];
+        description = match[1] || match[2];
       }
 
       if (key && description) {
@@ -351,14 +363,38 @@ export class IVRDetectionService {
   }
 
   private deduplicateOptions(options: IVROption[]): IVROption[] {
-    const seen = new Set<string>();
-    return options.filter((option) => {
-      const key = option.key + ':' + option.description;
-      if (seen.has(key)) {
-        return false;
+    const keyMap = new Map<string, IVROption>();
+    
+    for (const option of options) {
+      const existingOption = keyMap.get(option.key);
+      
+      if (!existingOption) {
+        // First time seeing this key
+        keyMap.set(option.key, option);
+      } else {
+        // Key already exists, keep the one with longer/better description
+        const currentDesc = option.description.length;
+        const existingDesc = existingOption.description.length;
+        const currentConfidence = option.confidence;
+        const existingConfidence = existingOption.confidence;
+        
+        // Prefer longer descriptions or higher confidence
+        if (currentDesc > existingDesc || 
+            (currentDesc === existingDesc && currentConfidence > existingConfidence)) {
+          keyMap.set(option.key, option);
+        }
       }
-      seen.add(key);
-      return true;
+    }
+    
+    return Array.from(keyMap.values()).sort((a, b) => {
+      // Sort by key numerically, then alphabetically
+      const aKey = a.key;
+      const bKey = b.key;
+      
+      if (!isNaN(Number(aKey)) && !isNaN(Number(bKey))) {
+        return Number(aKey) - Number(bKey);
+      }
+      return aKey.localeCompare(bKey);
     });
   }
 

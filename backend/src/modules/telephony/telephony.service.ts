@@ -63,23 +63,70 @@ export class TelephonyService {
   }
 
   async sendDTMF(callSid: string, digits: string): Promise<void> {
-    try {
-      await this.twilioService.sendDTMF(callSid, digits);
-      
-      // Track DTMF send time for waiting state detection
-      const callData = this.activeCalls.get(callSid);
-      if (callData) {
-        callData.lastDTMFTime = new Date();
-      }
+    const maxRetries = 2;
+    let retryCount = 0;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        await this.twilioService.sendDTMF(callSid, digits);
+        
+        // Track DTMF send time for waiting state detection
+        const callData = this.activeCalls.get(callSid);
+        if (callData) {
+          callData.lastDTMFTime = new Date();
+        }
 
-      this.eventEmitter.emit('dtmf.sent', {
-        callSid,
-        digits,
-        timestamp: new Date(),
-      });
-    } catch (error) {
-      this.logger.error(`Failed to send DTMF: ${error.message}`, error.stack);
-      throw error;
+        this.eventEmitter.emit('dtmf.sent', {
+          callSid,
+          digits,
+          timestamp: new Date(),
+        });
+        
+        if (retryCount > 0) {
+          this.logger.log(`✅ DTMF sent successfully on retry ${retryCount} for call ${callSid.slice(-8)}`);
+        }
+        
+        return; // Success, exit
+        
+      } catch (error) {
+        retryCount++;
+        
+        if (error.message?.includes('not in-progress') || error.message?.includes('Cannot redirect')) {
+          // Don't retry if call has ended
+          this.logger.warn(`🔴 DTMF failed: Call ${callSid.slice(-8)} is no longer active - ${error.message}`);
+          
+          this.eventEmitter.emit('dtmf.failed', {
+            callSid,
+            digits,
+            error: error.message,
+            reason: 'call_ended',
+            timestamp: new Date(),
+          });
+          
+          return; // Don't throw, just log and emit event
+        }
+        
+        if (retryCount > maxRetries) {
+          this.logger.error(`❌ DTMF failed after ${maxRetries} retries for call ${callSid.slice(-8)}: ${error.message}`);
+          
+          this.eventEmitter.emit('dtmf.failed', {
+            callSid,
+            digits,
+            error: error.message,
+            reason: 'max_retries_exceeded',
+            timestamp: new Date(),
+          });
+          
+          // Don't throw - let the system continue
+          return;
+        }
+        
+        // Log retry attempt
+        this.logger.warn(`⚠️ DTMF retry ${retryCount}/${maxRetries} for call ${callSid.slice(-8)}: ${error.message}`);
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
     }
   }
 
@@ -224,6 +271,18 @@ export class TelephonyService {
 
   @OnEvent('ai.send_dtmf')
   async handleAISendDTMF(event: { callSid: string; digits: string; reasoning: string }) {
+    // Validate call is still active before sending DTMF
+    const callData = this.activeCalls.get(event.callSid);
+    if (!callData) {
+      this.logger.warn(`⚠️ DTMF canceled: Call ${event.callSid.slice(-8)} not found in active calls`);
+      return;
+    }
+
+    if (callData.status !== 'in-progress') {
+      this.logger.warn(`⚠️ DTMF canceled: Call ${event.callSid.slice(-8)} is ${callData.status}, not in-progress`);
+      return;
+    }
+
     await this.sendDTMF(event.callSid, event.digits);
   }
 

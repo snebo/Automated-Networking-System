@@ -43,6 +43,18 @@ export declare class DecisionEngineService {
         callSid: string;
         transcript: string;
     }): void;
+    handleTranscriptReceived(event: {
+        callSid: string;
+        transcript: string;
+        confidence: number;
+        timestamp: Date;
+    }): void;
+    handleCallEnded(event: {
+        callSid: string;
+    }): void;
+    handleCallTerminated(event: {
+        callSid: string;
+    }): void;
     handleIVRMenuDetected(event: {
         callSid: string;
         options: IVRMenuOption[];

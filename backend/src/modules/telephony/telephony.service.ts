@@ -7,6 +7,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 export class TelephonyService {
   private readonly logger = new Logger(TelephonyService.name);
   private activeCalls = new Map<string, any>();
+  private processedTranscripts = new Map<string, Set<string>>();
 
   constructor(
     private readonly twilioService: TwilioService,
@@ -155,7 +156,36 @@ export class TelephonyService {
   }
 
   handleTranscriptionReceived(callSid: string, text: string): void {
+    // Deduplication: Check if we've already processed this exact transcript for this call
+    if (!this.processedTranscripts.has(callSid)) {
+      this.processedTranscripts.set(callSid, new Set());
+    }
+    
+    const callTranscripts = this.processedTranscripts.get(callSid)!;
+    const transcriptHash = text.trim().toLowerCase();
+    
+    if (callTranscripts.has(transcriptHash)) {
+      this.logger.debug(`Duplicate transcript detected for ${callSid}, skipping: "${text.substring(0, 50)}..."`);
+      return;
+    }
+    
+    callTranscripts.add(transcriptHash);
+    
     this.logger.log(`Transcription received for call ${callSid}: "${text}"`);
+    
+    // Store transcript in active call
+    const activeCall = this.activeCalls.get(callSid);
+    if (activeCall) {
+      if (!activeCall.transcript) {
+        activeCall.transcript = [];
+      }
+      activeCall.transcript.push({
+        timestamp: new Date(),
+        speaker: 'ivr',
+        text: text,
+        source: 'twilio-gather'
+      });
+    }
     
     // Emit as if it's from STT for IVR detection
     this.eventEmitter.emit('stt.final', {
@@ -167,6 +197,40 @@ export class TelephonyService {
   }
 
   // ===== AI ENGINE EVENT HANDLERS =====
+
+  @OnEvent('ivr.menu_detected')
+  handleIVRMenuDetected(event: any) {
+    const activeCall = this.activeCalls.get(event.callSid);
+    if (activeCall) {
+      if (!activeCall.ivrOptions) {
+        activeCall.ivrOptions = [];
+      }
+      activeCall.ivrOptions = event.options;
+      activeCall.lastIvrMenu = {
+        options: event.options,
+        fullText: event.fullText,
+        timestamp: event.timestamp,
+      };
+      this.logger.log(`Stored IVR menu for ${event.callSid}: ${event.options.length} options`);
+    }
+  }
+
+  @OnEvent('ai.decision_made')
+  handleAIDecisionMade(event: any) {
+    const activeCall = this.activeCalls.get(event.callSid);
+    if (activeCall) {
+      if (!activeCall.ivrDecisions) {
+        activeCall.ivrDecisions = [];
+      }
+      activeCall.ivrDecisions.push({
+        timestamp: new Date(),
+        selectedOption: event.decision.selectedOption,
+        reasoning: event.decision.reasoning,
+        confidence: event.decision.confidence,
+      });
+      this.logger.log(`Stored AI decision for ${event.callSid}: pressed ${event.decision.selectedOption}`);
+    }
+  }
 
   @OnEvent('ai.send_dtmf')
   async handleAISendDTMF(event: { callSid: string; digits: string; reasoning: string }) {

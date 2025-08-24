@@ -6,6 +6,7 @@ export declare class TelephonyService {
     private readonly eventEmitter;
     private readonly logger;
     private activeCalls;
+    private processedTranscripts;
     constructor(twilioService: TwilioService, eventEmitter: EventEmitter2);
     initiateCall(phoneNumber: string, scriptId?: string, goal?: string, companyName?: string): Promise<string>;
     endCall(callSid: string): Promise<void>;
@@ -15,6 +16,8 @@ export declare class TelephonyService {
     handleDTMFReceived(callSid: string, digits: string): void;
     updateCallStatus(callSid: string, status: CallStatus, metadata?: any): void;
     handleTranscriptionReceived(callSid: string, text: string): void;
+    handleIVRMenuDetected(event: any): void;
+    handleAIDecisionMade(event: any): void;
     handleAISendDTMF(event: {
         callSid: string;
         digits: string;

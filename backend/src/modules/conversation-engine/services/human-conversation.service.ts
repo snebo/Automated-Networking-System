@@ -319,6 +319,23 @@ export class HumanConversationService {
   private isHumanSpeech(transcript: string): boolean {
     const text = transcript.toLowerCase();
     
+    // Check for voicemail confirmation messages (NOT human)
+    const voicemailConfirmations = [
+      'message saved',
+      'message recorded',
+      'recording saved',
+      'thank you for your message',
+      'your message has been',
+      'goodbye',
+      'good bye',
+      'thank you goodbye',
+    ];
+    
+    if (voicemailConfirmations.some(indicator => text.includes(indicator))) {
+      console.log('📧 VOICEMAIL CONFIRMATION DETECTED - Not human speech');
+      return false;
+    }
+    
     // First check if this is a hold/wait message (NOT human)
     const holdIndicators = [
       'please hold',

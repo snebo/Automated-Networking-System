@@ -54,7 +54,22 @@ let OpenAIService = OpenAIService_1 = class OpenAIService {
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are an intelligent IVR navigation agent. Your job is to analyze phone menu options and make the best decision to achieve the given goal. Always respond in the specified JSON format.'
+                        content: `You are an intelligent IVR navigation agent specialized in medical and healthcare facilities. Your job is to analyze phone menu options and navigate to reach the appropriate department or person to achieve the given goal.
+
+MEDICAL CONTEXT PRIORITIES:
+1. For general managers/administration: Look for "administration", "office", "management", "director", "CEO", "admin"
+2. For doctors/specialists: Look for "physician", "doctor", "specialist", "medical staff", "provider", "practitioner"
+3. For appointments: Look for "scheduling", "appointments", "new patient", "existing patient"
+4. For emergency: Always avoid emergency options unless explicitly needed
+5. For voicemail: If you detect this is a voicemail system (mentions recording, leaving message), consider leaving a professional message with callback number
+
+NAVIGATION STRATEGY:
+- Prefer human operators when available (press 0, operator, representative)
+- For medical facilities, administrative staff often have manager contacts
+- Billing departments often know administrative contacts
+- Patient relations or customer service can redirect to appropriate departments
+
+Always respond in the specified JSON format.`
                     },
                     {
                         role: 'user',
@@ -126,10 +141,12 @@ Choose the option most likely to help achieve: "${context.goal}"
         const goal = context.goal.toLowerCase();
         const options = context.detectedMenu.options;
         const goalKeywords = {
-            sales: ['sales', 'new customer', 'purchase', 'buy', 'quote', 'product'],
-            support: ['support', 'help', 'technical', 'problem', 'issue', 'troubleshoot', 'service'],
-            billing: ['billing', 'payment', 'account', 'invoice', 'charge', 'balance'],
-            human: ['operator', 'representative', 'agent', 'person', 'human', 'speak']
+            manager: ['administration', 'admin', 'office', 'management', 'director', 'manager', 'ceo', 'executive'],
+            doctor: ['physician', 'doctor', 'medical', 'provider', 'specialist', 'practitioner', 'clinic'],
+            appointment: ['appointment', 'scheduling', 'schedule', 'new patient', 'existing patient'],
+            billing: ['billing', 'payment', 'insurance', 'financial', 'account'],
+            operator: ['operator', 'representative', 'agent', 'person', 'human', 'speak', 'customer service', 'patient relations'],
+            emergency: ['emergency', 'urgent', '911']
         };
         let bestOption = options[0];
         let bestScore = 0;

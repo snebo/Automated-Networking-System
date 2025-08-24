@@ -21,6 +21,7 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
         this.eventEmitter = eventEmitter;
         this.logger = new common_1.Logger(TelephonyService_1.name);
         this.activeCalls = new Map();
+        this.processedTranscripts = new Map();
     }
     async initiateCall(phoneNumber, scriptId, goal, companyName) {
         try {
@@ -146,13 +147,65 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
         }
     }
     handleTranscriptionReceived(callSid, text) {
+        if (!this.processedTranscripts.has(callSid)) {
+            this.processedTranscripts.set(callSid, new Set());
+        }
+        const callTranscripts = this.processedTranscripts.get(callSid);
+        const transcriptHash = text.trim().toLowerCase();
+        if (callTranscripts.has(transcriptHash)) {
+            this.logger.debug(`Duplicate transcript detected for ${callSid}, skipping: "${text.substring(0, 50)}..."`);
+            return;
+        }
+        callTranscripts.add(transcriptHash);
         this.logger.log(`Transcription received for call ${callSid}: "${text}"`);
+        const activeCall = this.activeCalls.get(callSid);
+        if (activeCall) {
+            if (!activeCall.transcript) {
+                activeCall.transcript = [];
+            }
+            activeCall.transcript.push({
+                timestamp: new Date(),
+                speaker: 'ivr',
+                text: text,
+                source: 'twilio-gather'
+            });
+        }
         this.eventEmitter.emit('stt.final', {
             callSid,
             transcript: text,
             confidence: 0.95,
             timestamp: new Date(),
         });
+    }
+    handleIVRMenuDetected(event) {
+        const activeCall = this.activeCalls.get(event.callSid);
+        if (activeCall) {
+            if (!activeCall.ivrOptions) {
+                activeCall.ivrOptions = [];
+            }
+            activeCall.ivrOptions = event.options;
+            activeCall.lastIvrMenu = {
+                options: event.options,
+                fullText: event.fullText,
+                timestamp: event.timestamp,
+            };
+            this.logger.log(`Stored IVR menu for ${event.callSid}: ${event.options.length} options`);
+        }
+    }
+    handleAIDecisionMade(event) {
+        const activeCall = this.activeCalls.get(event.callSid);
+        if (activeCall) {
+            if (!activeCall.ivrDecisions) {
+                activeCall.ivrDecisions = [];
+            }
+            activeCall.ivrDecisions.push({
+                timestamp: new Date(),
+                selectedOption: event.decision.selectedOption,
+                reasoning: event.decision.reasoning,
+                confidence: event.decision.confidence,
+            });
+            this.logger.log(`Stored AI decision for ${event.callSid}: pressed ${event.decision.selectedOption}`);
+        }
     }
     async handleAISendDTMF(event) {
         console.log(`📞 Sending DTMF [${event.digits}] to call ...${event.callSid.slice(-8)}`);
@@ -197,6 +250,18 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
     }
 };
 exports.TelephonyService = TelephonyService;
+__decorate([
+    (0, event_emitter_1.OnEvent)('ivr.menu_detected'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], TelephonyService.prototype, "handleIVRMenuDetected", null);
+__decorate([
+    (0, event_emitter_1.OnEvent)('ai.decision_made'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], TelephonyService.prototype, "handleAIDecisionMade", null);
 __decorate([
     (0, event_emitter_1.OnEvent)('ai.send_dtmf'),
     __metadata("design:type", Function),

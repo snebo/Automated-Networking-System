@@ -78,4 +78,15 @@ export declare class WebScraperService {
         message: string;
         deletedId: string;
     }>;
+    private scrapeYellowPages;
+    private scrapeYelp;
+    private scrapeGoogleBusiness;
+    private buildYellowPagesUrl;
+    private buildYelpUrl;
+    private buildGoogleBusinessUrl;
+    private parseYellowPagesListing;
+    private parseYelpListing;
+    private parseGoogleBusinessListing;
+    private isLikelyBusiness;
+    private extractPhoneNumber;
 }

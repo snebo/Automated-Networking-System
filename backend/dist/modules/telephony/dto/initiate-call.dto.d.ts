@@ -1,6 +1,6 @@
 export declare class InitiateCallDto {
     phoneNumber: string;
-    scriptId: string;
+    scriptId?: string;
     goal?: string;
     companyName?: string;
 }

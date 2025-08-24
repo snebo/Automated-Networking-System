@@ -24,7 +24,7 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
     }
     async initiateCall(phoneNumber, scriptId, goal, companyName) {
         try {
-            this.logger.log(`Initiating call to ${phoneNumber} with script ${scriptId}`);
+            this.logger.log(`Initiating call to ${phoneNumber}${scriptId ? ` with script ${scriptId}` : ''}`);
             if (goal) {
                 this.logger.log(`Call goal: ${goal}`);
             }
@@ -35,7 +35,7 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
             this.activeCalls.set(call.sid, {
                 callSid: call.sid,
                 phoneNumber,
-                scriptId,
+                scriptId: scriptId || null,
                 goal: goal || 'Navigate to customer support',
                 companyName: companyName || 'Unknown Company',
                 status: call_interface_1.CallStatus.INITIATING,
@@ -44,7 +44,7 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
             this.eventEmitter.emit('call.initiated', {
                 callSid: call.sid,
                 phoneNumber,
-                scriptId,
+                scriptId: scriptId || null,
                 goal: goal || 'Navigate to customer support',
                 companyName: companyName || 'Unknown Company',
             });

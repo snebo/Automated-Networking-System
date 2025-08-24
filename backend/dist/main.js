@@ -23,7 +23,30 @@ async function bootstrap() {
         transform: true,
         forbidNonWhitelisted: true,
     }));
-    app.enableCors();
+    const corsOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3001', 'http://localhost:3000'];
+    const corsOptions = {
+        origin: (origin, callback) => {
+            if (!origin)
+                return callback(null, true);
+            if (corsOrigins.some(allowed => origin.startsWith(allowed))) {
+                return callback(null, true);
+            }
+            if (origin.includes('.vercel.app')) {
+                return callback(null, true);
+            }
+            if (origin.startsWith('http://localhost')) {
+                return callback(null, true);
+            }
+            console.log('CORS rejected origin:', origin);
+            callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
+    };
+    app.enableCors(corsOptions);
     const config = new swagger_1.DocumentBuilder()
         .setTitle('IVR Navigation Agent API')
         .setDescription('AI-powered agent for autonomous IVR navigation and call handling')

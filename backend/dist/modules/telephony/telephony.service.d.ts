@@ -7,7 +7,7 @@ export declare class TelephonyService {
     private readonly logger;
     private activeCalls;
     constructor(twilioService: TwilioService, eventEmitter: EventEmitter2);
-    initiateCall(phoneNumber: string, scriptId: string, goal?: string, companyName?: string): Promise<string>;
+    initiateCall(phoneNumber: string, scriptId?: string, goal?: string, companyName?: string): Promise<string>;
     endCall(callSid: string): Promise<void>;
     sendDTMF(callSid: string, digits: string): Promise<void>;
     getActiveCall(callSid: string): any;

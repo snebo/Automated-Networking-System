@@ -13,9 +13,9 @@ export class TelephonyService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async initiateCall(phoneNumber: string, scriptId: string, goal?: string, companyName?: string): Promise<string> {
+  async initiateCall(phoneNumber: string, scriptId?: string, goal?: string, companyName?: string): Promise<string> {
     try {
-      this.logger.log(`Initiating call to ${phoneNumber} with script ${scriptId}`);
+      this.logger.log(`Initiating call to ${phoneNumber}${scriptId ? ` with script ${scriptId}` : ''}`);
       if (goal) {
         this.logger.log(`Call goal: ${goal}`);
       }
@@ -28,7 +28,7 @@ export class TelephonyService {
       this.activeCalls.set(call.sid, {
         callSid: call.sid,
         phoneNumber,
-        scriptId,
+        scriptId: scriptId || null,
         goal: goal || 'Navigate to customer support',
         companyName: companyName || 'Unknown Company',
         status: CallStatus.INITIATING,
@@ -38,7 +38,7 @@ export class TelephonyService {
       this.eventEmitter.emit('call.initiated', {
         callSid: call.sid,
         phoneNumber,
-        scriptId,
+        scriptId: scriptId || null,
         goal: goal || 'Navigate to customer support',
         companyName: companyName || 'Unknown Company',
       });

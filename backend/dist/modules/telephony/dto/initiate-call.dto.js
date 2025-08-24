@@ -29,10 +29,10 @@ __decorate([
     (0, swagger_1.ApiProperty)({
         description: 'The ID of the script to use for this call',
         example: 'script-123e4567-e89b-12d3-a456-426614174000',
-        required: true,
+        required: false,
     }),
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], InitiateCallDto.prototype, "scriptId", void 0);
 __decorate([

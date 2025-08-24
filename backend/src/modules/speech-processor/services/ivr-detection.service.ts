@@ -58,51 +58,20 @@ export class IVRDetectionService {
   }) {
     const { callSid, transcript, confidence, timestamp } = event;
 
-    // Clean console output for better readability
-    console.log('\n' + '='.repeat(80));
-    console.log(
-      `🎤 TRANSCRIPT | Call: ${callSid.slice(-8)} | Confidence: ${(confidence * 100).toFixed(1)}%`,
-    );
-    console.log('='.repeat(80));
-    console.log(`📝 "${transcript}"`);
-
     // First check if this is a voicemail prompt
     if (this.isVoicemailPrompt(transcript)) {
-      console.log('\n📬 VOICEMAIL DETECTED!');
-      console.log('-'.repeat(50));
-      console.log('System is asking to leave a voicemail message');
-      console.log('-'.repeat(50));
-
-      this.logger.log(`Voicemail detected for ${callSid}`);
-
       this.eventEmitter.emit('ivr.voicemail_detected', {
         callSid,
         transcript,
         confidence,
         timestamp,
       });
-
       return; // Don't process as regular IVR menu
     }
 
     const detectedMenu = this.detectIVRMenu(callSid, transcript, confidence, timestamp);
 
     if (detectedMenu) {
-      console.log('\n🎯 IVR MENU DETECTED!');
-      console.log('-'.repeat(50));
-
-      detectedMenu.options.forEach((option, index) => {
-        console.log(
-          `${index + 1}. Press [${option.key}] → ${option.description} (${(option.confidence * 100).toFixed(0)}%)`,
-        );
-      });
-
-      console.log('-'.repeat(50));
-      console.log('');
-
-      // Structured log for monitoring
-      this.logger.log(`IVR menu detected for ${callSid}: ${detectedMenu.options.length} options`);
-
       this.eventEmitter.emit('ivr.menu_detected', detectedMenu);
 
       // Emit each option separately for easier processing
@@ -125,10 +94,6 @@ export class IVRDetectionService {
         timestamp,
       });
     } else {
-      console.log('❌ No IVR menu detected');
-      console.log('');
-      this.logger.debug(`No IVR patterns found in transcript for ${callSid}`);
-
       // Signal that IVR detection is complete without results
       this.eventEmitter.emit('ivr.detection_completed', {
         callSid,
@@ -148,13 +113,11 @@ export class IVRDetectionService {
   ): DetectedMenu | null {
     // Normalize text: convert words to numbers/symbols and clean up
     const normalizedText = this.normalizeIVRText(transcript.toLowerCase());
-    console.log(`🔍 Normalized: "${normalizedText}"`);
 
     const options: IVROption[] = [];
 
     // Check if this looks like an IVR menu
     if (!this.isLikelyIVRMenu(normalizedText)) {
-      console.log('❌ Does not look like IVR menu');
       return null;
     }
 
@@ -168,13 +131,9 @@ export class IVRDetectionService {
       ...normalizedText.matchAll(/to\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
     ];
 
-    console.log(`🔍 Found ${ivrMatches.length} potential matches`);
-
     for (const match of ivrMatches) {
       let key: string;
       let description: string;
-
-      console.log(`🔍 Match: "${match[0]}" → [1]="${match[1]}" [2]="${match[2]}"`);
 
       // Check the actual pattern used based on match structure
       if (match[0].startsWith('press') && /press\s+[0-9*#]+\s+(?:for|to)/.test(match[0])) {
@@ -194,8 +153,6 @@ export class IVRDetectionService {
       if (key && description) {
         const cleanDescription = this.cleanDescription(description);
         const optionConfidence = this.calculateOptionConfidence(cleanDescription);
-
-        console.log(`✅ Found option: key="${key}" desc="${cleanDescription}"`);
 
         options.push({
           key: key.trim(),
@@ -222,13 +179,45 @@ export class IVRDetectionService {
   }
 
   private isVoicemailPrompt(transcript: string): boolean {
-    const voicemailKeywords = [
-      'leave a message',
-      'leave your message',
+    const lowerTranscript = transcript.toLowerCase();
+
+    // Strong voicemail indicators (single match is enough)
+    const strongIndicators = [
       'record your message',
+      'leave your message',
+      'leave a message',
+      'at the tone',
+      'after the beep',
       'voicemail',
       'voice mail',
-      'message after',
+      'message after the tone'
+    ];
+
+    // Check for strong indicators first
+    for (const indicator of strongIndicators) {
+      if (lowerTranscript.includes(indicator)) {
+        return true;
+      }
+    }
+
+    // Voicemail recording control patterns (these indicate you're already in a voicemail system)
+    const recordingControlPatterns = [
+      /to save.*press.*2/i,
+      /to re-?record.*press/i,
+      /to delete.*recording.*press/i,
+      /listen.*recording.*press.*1/i,
+      /message saved/i,
+      /recording.*saved/i
+    ];
+
+    for (const pattern of recordingControlPatterns) {
+      if (pattern.test(transcript)) {
+        return true;
+      }
+    }
+
+    // Other voicemail keywords (need multiple matches)
+    const weakIndicators = [
       'unavailable',
       'not available to take your call',
       'unable to take your call',
@@ -239,19 +228,18 @@ export class IVRDetectionService {
       'we will return your call',
       'call you back',
       'someone will return your call',
+      'currently closed'
     ];
 
-    const lowerTranscript = transcript.toLowerCase();
-
-    // Check for multiple voicemail indicators
+    // Check for multiple weak indicators
     let matches = 0;
-    for (const keyword of voicemailKeywords) {
+    for (const keyword of weakIndicators) {
       if (lowerTranscript.includes(keyword)) {
         matches++;
       }
     }
 
-    // If we have 2 or more voicemail indicators, it's likely a voicemail
+    // If we have 2 or more weak indicators, it's likely a voicemail
     return matches >= 2;
   }
 

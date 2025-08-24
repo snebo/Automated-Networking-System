@@ -16,13 +16,6 @@ export class TelephonyService {
 
   async initiateCall(phoneNumber: string, scriptId?: string, goal?: string, companyName?: string): Promise<string> {
     try {
-      this.logger.log(`Initiating call to ${phoneNumber}${scriptId ? ` with script ${scriptId}` : ''}`);
-      if (goal) {
-        this.logger.log(`Call goal: ${goal}`);
-      }
-      if (companyName) {
-        this.logger.log(`Company: ${companyName}`);
-      }
       
       const call = await this.twilioService.makeCall(phoneNumber);
       
@@ -72,7 +65,6 @@ export class TelephonyService {
   async sendDTMF(callSid: string, digits: string): Promise<void> {
     try {
       await this.twilioService.sendDTMF(callSid, digits);
-      console.log(`✅ DTMF sent successfully: [${digits}]`);
       
       // Track DTMF send time for waiting state detection
       const callData = this.activeCalls.get(callSid);
@@ -86,7 +78,6 @@ export class TelephonyService {
         timestamp: new Date(),
       });
     } catch (error) {
-      console.log(`❌ DTMF send failed: ${error.message}`);
       this.logger.error(`Failed to send DTMF: ${error.message}`, error.stack);
       throw error;
     }
@@ -102,8 +93,6 @@ export class TelephonyService {
 
   handleDTMFReceived(callSid: string, digits: string): void {
     try {
-      this.logger.log(`DTMF received for call ${callSid}: ${digits}`);
-      
       const callData = this.activeCalls.get(callSid);
       if (callData) {
         // Add to call transcript
@@ -165,13 +154,10 @@ export class TelephonyService {
     const transcriptHash = text.trim().toLowerCase();
     
     if (callTranscripts.has(transcriptHash)) {
-      this.logger.debug(`Duplicate transcript detected for ${callSid}, skipping: "${text.substring(0, 50)}..."`);
       return;
     }
     
     callTranscripts.add(transcriptHash);
-    
-    this.logger.log(`Transcription received for call ${callSid}: "${text}"`);
     
     // Store transcript in active call
     const activeCall = this.activeCalls.get(callSid);
@@ -196,6 +182,12 @@ export class TelephonyService {
     });
   }
 
+  @OnEvent('call.get_session')
+  handleGetSession(event: { callSid: string; callback: (session: any) => void }) {
+    const callData = this.activeCalls.get(event.callSid);
+    event.callback(callData);
+  }
+
   // ===== AI ENGINE EVENT HANDLERS =====
 
   @OnEvent('ivr.menu_detected')
@@ -211,7 +203,6 @@ export class TelephonyService {
         fullText: event.fullText,
         timestamp: event.timestamp,
       };
-      this.logger.log(`Stored IVR menu for ${event.callSid}: ${event.options.length} options`);
     }
   }
 
@@ -228,24 +219,16 @@ export class TelephonyService {
         reasoning: event.decision.reasoning,
         confidence: event.decision.confidence,
       });
-      this.logger.log(`Stored AI decision for ${event.callSid}: pressed ${event.decision.selectedOption}`);
     }
   }
 
   @OnEvent('ai.send_dtmf')
   async handleAISendDTMF(event: { callSid: string; digits: string; reasoning: string }) {
-    console.log(`📞 Sending DTMF [${event.digits}] to call ...${event.callSid.slice(-8)}`);
-    console.log(`💭 Reason: ${event.reasoning}`);
-    
-    this.logger.log(`Sending DTMF ${event.digits} to ${event.callSid}`);
     await this.sendDTMF(event.callSid, event.digits);
   }
 
   @OnEvent('ai.speak')
   async handleAISpeak(event: { callSid: string; text: string; action: string }) {
-    this.logger.log(`\n🎤 AI requesting TTS: "${event.text}" for call ${event.callSid}`);
-    this.logger.log(`   Action context: ${event.action}`);
-    
     // Emit to TTS service
     this.eventEmitter.emit('tts.generate', {
       callSid: event.callSid,
@@ -257,23 +240,15 @@ export class TelephonyService {
 
   @OnEvent('ai.hangup')
   async handleAIHangup(event: { callSid: string; reason: string }) {
-    this.logger.log(`\n📞 AI requesting hangup for call ${event.callSid}`);
-    this.logger.log(`   Reason: ${event.reason}`);
-    
     await this.endCall(event.callSid);
   }
 
   @OnEvent('call.answered')
   handleCallAnswered(event: { callSid: string; phoneNumber: string }) {
-    this.logger.log(`\n📞 Call answered: ${event.callSid} to ${event.phoneNumber}`);
-    
     // Get call data to retrieve custom goal and company name
     const callData = this.activeCalls.get(event.callSid);
     const goal = callData?.goal || 'Navigate to customer support';
     const companyName = callData?.companyName || 'Unknown Company';
-    
-    this.logger.log(`   🎯 Call goal: ${goal}`);
-    this.logger.log(`   🏢 Company: ${companyName}`);
     
     // Start AI decision session with custom goal
     this.eventEmitter.emit('ai.start_session', {
@@ -286,8 +261,6 @@ export class TelephonyService {
 
   @OnEvent('call.ended')
   handleCallEnded(event: { callSid: string }) {
-    this.logger.log(`\n📞 Call ended: ${event.callSid}`);
-    
     // Notify AI Engine to clean up session
     this.eventEmitter.emit('ai.session_ended', {
       callSid: event.callSid,

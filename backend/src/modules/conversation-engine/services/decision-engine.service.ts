@@ -73,10 +73,7 @@ export class DecisionEngineService {
     const session = this.activeSessions.get(event.callSid);
     if (!session) return;
 
-    console.log(`⏳ Entering WAIT state after ${event.action} [${event.key}]`);
     session.currentState = 'waiting';
-    
-    this.logger.log(`Session ${event.callSid} entering wait state after ${event.action}`);
   }
 
   @OnEvent('ai.human_reached')
@@ -84,11 +81,8 @@ export class DecisionEngineService {
     const session = this.activeSessions.get(event.callSid);
     if (!session) return;
 
-    console.log(`🎉 Human reached - exiting wait state`);
     session.currentState = 'listening';
     session.actionHistory.push(`Reached human: "${event.transcript}"`);
-    
-    this.logger.log(`Session ${event.callSid} reached human, exiting wait state`);
   }
 
   @OnEvent('ivr.menu_detected')
@@ -106,21 +100,8 @@ export class DecisionEngineService {
 
     // Don't process IVR menus while waiting for response
     if (session.currentState === 'waiting') {
-      console.log(`⏸️  Ignoring IVR menu - currently waiting for response to previous action`);
-      this.logger.debug(`Ignoring IVR menu for ${event.callSid} - session in waiting state`);
       return;
     }
-
-    // Clean console output for AI decision making
-    console.log('\n🤖 AI ANALYZING IVR MENU');
-    console.log('='.repeat(50));
-    console.log(`📞 Call: ${event.callSid.slice(-8)}`);
-    console.log(`🎯 Goal: ${session.goal}`);
-    console.log(`📋 Available Options:`);
-    event.options.forEach((option, index) => {
-      console.log(`   ${index + 1}. Press [${option.key}] → ${option.description}`);
-    });
-    console.log('='.repeat(50));
     
     session.currentState = 'deciding';
 
@@ -139,19 +120,6 @@ export class DecisionEngineService {
 
       const decision = await this.openaiService.makeIVRDecision(context);
       session.lastDecision = decision;
-
-      // Clean console output for AI decision
-      console.log('\n🎯 AI DECISION MADE');
-      console.log('-'.repeat(50));
-      console.log(`✅ Selected: Press [${decision.selectedOption}]`);
-      console.log(`🧠 Reasoning: ${decision.reasoning}`);
-      console.log(`📊 Confidence: ${(decision.confidence * 100).toFixed(1)}%`);
-      console.log(`🎬 Action: ${decision.nextAction}`);
-      console.log('-'.repeat(50));
-      console.log('');
-      
-      // Structured log for monitoring
-      this.logger.log(`AI decision: press ${decision.selectedOption} for ${event.callSid}`);
 
       // Record the action
       session.actionHistory.push(`Selected option ${decision.selectedOption}: ${event.options.find(o => o.key === decision.selectedOption)?.description || 'unknown'}`);
@@ -183,19 +151,6 @@ export class DecisionEngineService {
     if (!session) return;
 
     const duration = Date.now() - session.startTime.getTime();
-    
-    this.logger.log(`\n📋 CALL SESSION COMPLETED:`);
-    this.logger.log(`   Call: ${callSid}`);
-    this.logger.log(`   Goal: ${session.goal}`);
-    this.logger.log(`   Duration: ${Math.round(duration / 1000)}s`);
-    this.logger.log(`   Actions taken: ${session.actionHistory.length}`);
-    
-    if (session.actionHistory.length > 0) {
-      this.logger.log(`   📝 Action History:`);
-      session.actionHistory.forEach((action, index) => {
-        this.logger.log(`      ${index + 1}. ${action}`);
-      });
-    }
 
     // Generate summary
     if (this.openaiService.isAvailable() && session.actionHistory.length > 0) {

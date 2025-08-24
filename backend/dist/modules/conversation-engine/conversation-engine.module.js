@@ -14,6 +14,7 @@ const conversation_engine_controller_1 = require("./conversation-engine.controll
 const openai_service_1 = require("./services/openai.service");
 const decision_engine_service_1 = require("./services/decision-engine.service");
 const human_conversation_service_1 = require("./services/human-conversation.service");
+const voicemail_service_1 = require("./services/voicemail.service");
 const database_module_1 = require("../database/database.module");
 const ivr_navigator_module_1 = require("../ivr-navigator/ivr-navigator.module");
 let ConversationEngineModule = class ConversationEngineModule {
@@ -28,12 +29,14 @@ exports.ConversationEngineModule = ConversationEngineModule = __decorate([
             openai_service_1.OpenAIService,
             decision_engine_service_1.DecisionEngineService,
             human_conversation_service_1.HumanConversationService,
+            voicemail_service_1.VoicemailService,
         ],
         exports: [
             conversation_engine_service_1.ConversationEngineService,
             openai_service_1.OpenAIService,
             decision_engine_service_1.DecisionEngineService,
             human_conversation_service_1.HumanConversationService,
+            voicemail_service_1.VoicemailService,
         ],
     })
 ], ConversationEngineModule);

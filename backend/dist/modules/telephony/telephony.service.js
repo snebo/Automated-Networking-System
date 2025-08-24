@@ -25,13 +25,6 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
     }
     async initiateCall(phoneNumber, scriptId, goal, companyName) {
         try {
-            this.logger.log(`Initiating call to ${phoneNumber}${scriptId ? ` with script ${scriptId}` : ''}`);
-            if (goal) {
-                this.logger.log(`Call goal: ${goal}`);
-            }
-            if (companyName) {
-                this.logger.log(`Company: ${companyName}`);
-            }
             const call = await this.twilioService.makeCall(phoneNumber);
             this.activeCalls.set(call.sid, {
                 callSid: call.sid,
@@ -75,7 +68,6 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
     async sendDTMF(callSid, digits) {
         try {
             await this.twilioService.sendDTMF(callSid, digits);
-            console.log(`✅ DTMF sent successfully: [${digits}]`);
             const callData = this.activeCalls.get(callSid);
             if (callData) {
                 callData.lastDTMFTime = new Date();
@@ -87,7 +79,6 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
             });
         }
         catch (error) {
-            console.log(`❌ DTMF send failed: ${error.message}`);
             this.logger.error(`Failed to send DTMF: ${error.message}`, error.stack);
             throw error;
         }
@@ -100,7 +91,6 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
     }
     handleDTMFReceived(callSid, digits) {
         try {
-            this.logger.log(`DTMF received for call ${callSid}: ${digits}`);
             const callData = this.activeCalls.get(callSid);
             if (callData) {
                 if (!callData.transcript) {
@@ -153,11 +143,9 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
         const callTranscripts = this.processedTranscripts.get(callSid);
         const transcriptHash = text.trim().toLowerCase();
         if (callTranscripts.has(transcriptHash)) {
-            this.logger.debug(`Duplicate transcript detected for ${callSid}, skipping: "${text.substring(0, 50)}..."`);
             return;
         }
         callTranscripts.add(transcriptHash);
-        this.logger.log(`Transcription received for call ${callSid}: "${text}"`);
         const activeCall = this.activeCalls.get(callSid);
         if (activeCall) {
             if (!activeCall.transcript) {
@@ -177,6 +165,10 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
             timestamp: new Date(),
         });
     }
+    handleGetSession(event) {
+        const callData = this.activeCalls.get(event.callSid);
+        event.callback(callData);
+    }
     handleIVRMenuDetected(event) {
         const activeCall = this.activeCalls.get(event.callSid);
         if (activeCall) {
@@ -189,7 +181,6 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
                 fullText: event.fullText,
                 timestamp: event.timestamp,
             };
-            this.logger.log(`Stored IVR menu for ${event.callSid}: ${event.options.length} options`);
         }
     }
     handleAIDecisionMade(event) {
@@ -204,18 +195,12 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
                 reasoning: event.decision.reasoning,
                 confidence: event.decision.confidence,
             });
-            this.logger.log(`Stored AI decision for ${event.callSid}: pressed ${event.decision.selectedOption}`);
         }
     }
     async handleAISendDTMF(event) {
-        console.log(`📞 Sending DTMF [${event.digits}] to call ...${event.callSid.slice(-8)}`);
-        console.log(`💭 Reason: ${event.reasoning}`);
-        this.logger.log(`Sending DTMF ${event.digits} to ${event.callSid}`);
         await this.sendDTMF(event.callSid, event.digits);
     }
     async handleAISpeak(event) {
-        this.logger.log(`\n🎤 AI requesting TTS: "${event.text}" for call ${event.callSid}`);
-        this.logger.log(`   Action context: ${event.action}`);
         this.eventEmitter.emit('tts.generate', {
             callSid: event.callSid,
             text: event.text,
@@ -224,17 +209,12 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
         });
     }
     async handleAIHangup(event) {
-        this.logger.log(`\n📞 AI requesting hangup for call ${event.callSid}`);
-        this.logger.log(`   Reason: ${event.reason}`);
         await this.endCall(event.callSid);
     }
     handleCallAnswered(event) {
-        this.logger.log(`\n📞 Call answered: ${event.callSid} to ${event.phoneNumber}`);
         const callData = this.activeCalls.get(event.callSid);
         const goal = callData?.goal || 'Navigate to customer support';
         const companyName = callData?.companyName || 'Unknown Company';
-        this.logger.log(`   🎯 Call goal: ${goal}`);
-        this.logger.log(`   🏢 Company: ${companyName}`);
         this.eventEmitter.emit('ai.start_session', {
             callSid: event.callSid,
             phoneNumber: event.phoneNumber,
@@ -243,13 +223,18 @@ let TelephonyService = TelephonyService_1 = class TelephonyService {
         });
     }
     handleCallEnded(event) {
-        this.logger.log(`\n📞 Call ended: ${event.callSid}`);
         this.eventEmitter.emit('ai.session_ended', {
             callSid: event.callSid,
         });
     }
 };
 exports.TelephonyService = TelephonyService;
+__decorate([
+    (0, event_emitter_1.OnEvent)('call.get_session'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], TelephonyService.prototype, "handleGetSession", null);
 __decorate([
     (0, event_emitter_1.OnEvent)('ivr.menu_detected'),
     __metadata("design:type", Function),

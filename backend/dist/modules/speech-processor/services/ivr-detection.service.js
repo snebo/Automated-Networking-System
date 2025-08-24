@@ -38,16 +38,7 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
     }
     handleFinalTranscript(event) {
         const { callSid, transcript, confidence, timestamp } = event;
-        console.log('\n' + '='.repeat(80));
-        console.log(`🎤 TRANSCRIPT | Call: ${callSid.slice(-8)} | Confidence: ${(confidence * 100).toFixed(1)}%`);
-        console.log('='.repeat(80));
-        console.log(`📝 "${transcript}"`);
         if (this.isVoicemailPrompt(transcript)) {
-            console.log('\n📬 VOICEMAIL DETECTED!');
-            console.log('-'.repeat(50));
-            console.log('System is asking to leave a voicemail message');
-            console.log('-'.repeat(50));
-            this.logger.log(`Voicemail detected for ${callSid}`);
             this.eventEmitter.emit('ivr.voicemail_detected', {
                 callSid,
                 transcript,
@@ -58,14 +49,6 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
         }
         const detectedMenu = this.detectIVRMenu(callSid, transcript, confidence, timestamp);
         if (detectedMenu) {
-            console.log('\n🎯 IVR MENU DETECTED!');
-            console.log('-'.repeat(50));
-            detectedMenu.options.forEach((option, index) => {
-                console.log(`${index + 1}. Press [${option.key}] → ${option.description} (${(option.confidence * 100).toFixed(0)}%)`);
-            });
-            console.log('-'.repeat(50));
-            console.log('');
-            this.logger.log(`IVR menu detected for ${callSid}: ${detectedMenu.options.length} options`);
             this.eventEmitter.emit('ivr.menu_detected', detectedMenu);
             detectedMenu.options.forEach((option) => {
                 this.eventEmitter.emit('ivr.option_detected', {
@@ -85,9 +68,6 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
             });
         }
         else {
-            console.log('❌ No IVR menu detected');
-            console.log('');
-            this.logger.debug(`No IVR patterns found in transcript for ${callSid}`);
             this.eventEmitter.emit('ivr.detection_completed', {
                 callSid,
                 transcript,
@@ -99,10 +79,8 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
     }
     detectIVRMenu(callSid, transcript, confidence, timestamp) {
         const normalizedText = this.normalizeIVRText(transcript.toLowerCase());
-        console.log(`🔍 Normalized: "${normalizedText}"`);
         const options = [];
         if (!this.isLikelyIVRMenu(normalizedText)) {
-            console.log('❌ Does not look like IVR menu');
             return null;
         }
         const ivrMatches = [
@@ -110,11 +88,9 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
             ...normalizedText.matchAll(/for\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
             ...normalizedText.matchAll(/to\s+([^,.]+?),?\s+press\s+([0-9*#]+)/gi),
         ];
-        console.log(`🔍 Found ${ivrMatches.length} potential matches`);
         for (const match of ivrMatches) {
             let key;
             let description;
-            console.log(`🔍 Match: "${match[0]}" → [1]="${match[1]}" [2]="${match[2]}"`);
             if (match[0].startsWith('press') && /press\s+[0-9*#]+\s+(?:for|to)/.test(match[0])) {
                 key = match[1];
                 description = match[2];
@@ -130,7 +106,6 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
             if (key && description) {
                 const cleanDescription = this.cleanDescription(description);
                 const optionConfidence = this.calculateOptionConfidence(cleanDescription);
-                console.log(`✅ Found option: key="${key}" desc="${cleanDescription}"`);
                 options.push({
                     key: key.trim(),
                     description: cleanDescription,
@@ -151,13 +126,36 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
         return null;
     }
     isVoicemailPrompt(transcript) {
-        const voicemailKeywords = [
-            'leave a message',
-            'leave your message',
+        const lowerTranscript = transcript.toLowerCase();
+        const strongIndicators = [
             'record your message',
+            'leave your message',
+            'leave a message',
+            'at the tone',
+            'after the beep',
             'voicemail',
             'voice mail',
-            'message after',
+            'message after the tone'
+        ];
+        for (const indicator of strongIndicators) {
+            if (lowerTranscript.includes(indicator)) {
+                return true;
+            }
+        }
+        const recordingControlPatterns = [
+            /to save.*press.*2/i,
+            /to re-?record.*press/i,
+            /to delete.*recording.*press/i,
+            /listen.*recording.*press.*1/i,
+            /message saved/i,
+            /recording.*saved/i
+        ];
+        for (const pattern of recordingControlPatterns) {
+            if (pattern.test(transcript)) {
+                return true;
+            }
+        }
+        const weakIndicators = [
             'unavailable',
             'not available to take your call',
             'unable to take your call',
@@ -168,10 +166,10 @@ let IVRDetectionService = IVRDetectionService_1 = class IVRDetectionService {
             'we will return your call',
             'call you back',
             'someone will return your call',
+            'currently closed'
         ];
-        const lowerTranscript = transcript.toLowerCase();
         let matches = 0;
-        for (const keyword of voicemailKeywords) {
+        for (const keyword of weakIndicators) {
             if (lowerTranscript.includes(keyword)) {
                 matches++;
             }

@@ -5,6 +5,7 @@ import { ConversationEngineController } from './conversation-engine.controller';
 import { OpenAIService } from './services/openai.service';
 import { DecisionEngineService } from './services/decision-engine.service';
 import { HumanConversationService } from './services/human-conversation.service';
+import { VoicemailService } from './services/voicemail.service';
 import { DatabaseModule } from '../database/database.module';
 import { TelephonyModule } from '../telephony/telephony.module';
 import { IvrNavigatorModule } from '../ivr-navigator/ivr-navigator.module';
@@ -17,12 +18,14 @@ import { IvrNavigatorModule } from '../ivr-navigator/ivr-navigator.module';
     OpenAIService,
     DecisionEngineService,
     HumanConversationService,
+    VoicemailService,
   ],
   exports: [
     ConversationEngineService,
     OpenAIService,
     DecisionEngineService,
     HumanConversationService,
+    VoicemailService,
   ],
 })
 export class ConversationEngineModule {}

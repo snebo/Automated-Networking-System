@@ -12,6 +12,9 @@ const bull_1 = require("@nestjs/bull");
 const call_manager_service_1 = require("./call-manager.service");
 const call_processor_1 = require("./call.processor");
 const verification_workflow_service_1 = require("./verification-workflow.service");
+const call_progress_service_1 = require("./call-progress.service");
+const call_progress_gateway_1 = require("./call-progress.gateway");
+const call_progress_controller_1 = require("./call-progress.controller");
 const telephony_module_1 = require("../telephony/telephony.module");
 const information_extraction_module_1 = require("../information-extraction/information-extraction.module");
 const script_manager_module_1 = require("../script-manager/script-manager.module");
@@ -33,8 +36,9 @@ exports.CallManagerModule = CallManagerModule = __decorate([
             information_extraction_module_1.InformationExtractionModule,
             script_manager_module_1.ScriptManagerModule,
         ],
-        providers: [call_manager_service_1.CallManagerService, call_processor_1.CallProcessor, verification_workflow_service_1.VerificationWorkflowService],
-        exports: [call_manager_service_1.CallManagerService, verification_workflow_service_1.VerificationWorkflowService],
+        controllers: [call_progress_controller_1.CallProgressController],
+        providers: [call_manager_service_1.CallManagerService, call_processor_1.CallProcessor, verification_workflow_service_1.VerificationWorkflowService, call_progress_service_1.CallProgressService, call_progress_gateway_1.CallProgressGateway],
+        exports: [call_manager_service_1.CallManagerService, verification_workflow_service_1.VerificationWorkflowService, call_progress_service_1.CallProgressService, call_progress_gateway_1.CallProgressGateway],
     })
 ], CallManagerModule);
 //# sourceMappingURL=call-manager.module.js.map

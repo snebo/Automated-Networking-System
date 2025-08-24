@@ -389,24 +389,63 @@ export class HumanConversationService {
   private respondToHuman(session: SimpleHumanSession, humanSpeech: string): void {
     if (session.hasAskedQuestion) return;
 
-    // Respond naturally to what the human said, then ask our question
-    let response = "Hello, thank you for taking my call.";
-    
-    // Customize response based on what they said
     const speech = humanSpeech.toLowerCase();
-    if (speech.includes('help') || speech.includes('assist')) {
-      response = "Hello, yes I could use your help with something.";
+    let response = '';
+    let introduction = '';
+
+    // Determine if it's a hospital or restaurant based on business name
+    const isHospital = session.businessName && (
+      session.businessName.toLowerCase().includes('hospital') ||
+      session.businessName.toLowerCase().includes('medical') ||
+      session.businessName.toLowerCase().includes('clinic')
+    );
+    
+    const isRestaurant = session.businessName && (
+      session.businessName.toLowerCase().includes('restaurant') ||
+      session.businessName.toLowerCase().includes('pizza') ||
+      session.businessName.toLowerCase().includes('cafe')
+    );
+
+    // Match the greeting style and formality with natural persona
+    if (speech.includes('hello') || speech.includes('hi')) {
+      response = "Hi there! Thanks for taking my call.";  
+    } else if (speech.includes('how are you')) {
+      response = "I'm doing well, thank you for asking.";
+    } else if (speech.includes('how can i help') || speech.includes('assist')) {
+      response = "Thanks for your help.";
     } else if (speech.includes('speaking') || speech.includes('this is')) {
-      response = "Hello, thank you for taking my call.";  
-    } else if (speech.includes('how are you') || speech.includes('how can i')) {
-      response = "Hello, I'm doing well thank you.";
+      response = "Hi, thanks for answering.";
+    } else {
+      response = "Hello, thanks for taking my call.";
     }
 
-    // Add our actual request
-    const service = this.extractService(session.goal);
-    const fullRequest = `${response} I'm hoping you can provide me with contact information for ${service} at your facility. I'm looking to ${session.goal.toLowerCase()}.`;
+    // Create natural, benefit-focused request based on context
+    const goalLower = session.goal.toLowerCase();
+    let fullRequest = '';
 
-    console.log(`🗣️  RESPONDING TO HUMAN: "${fullRequest}"`);
+    if (goalLower.includes('general manager') || goalLower.includes('manager')) {
+      if (isRestaurant) {
+        introduction = "My name is Sarah from Restaurant Business Partners.";
+        fullRequest = `${response} ${introduction} We're working with restaurants in your area on a revenue optimization program that's been really successful. I'd love to speak with your general manager about how we can help ${session.businessName}. Could you connect me with them or provide their direct contact?`;
+      } else {
+        introduction = "I'm Michael from Business Development Associates.";
+        fullRequest = `${response} ${introduction} We have a partnership opportunity that could really benefit ${session.businessName || 'your organization'}'s operations. I'd appreciate the chance to speak with your general manager. Could you help me reach them?`;
+      }
+    } else if (goalLower.includes('doctor') || goalLower.includes('medical') || goalLower.includes('physician')) {
+      introduction = "I'm Jennifer from Healthcare Coordination Services.";
+      fullRequest = `${response} ${introduction} We're helping hospitals in your region improve patient care coordination and reduce administrative burden. I'd like to discuss this with your medical director or chief physician. Could you help me reach the right person?`;
+    } else if (goalLower.includes('cardiologist') || goalLower.includes('heart')) {
+      introduction = "I'm calling from Regional Medical Partnerships.";
+      fullRequest = `${response} ${introduction} We're working on a cardiac care improvement initiative with hospitals in your area. I need to speak with your cardiology department head about this opportunity. Could you provide their contact information?`;
+    } else if (goalLower.includes('emergency') || goalLower.includes('er')) {
+      introduction = "This is Dr. Martinez's office from Regional Medical Coordination.";
+      fullRequest = `${response} ${introduction} We're working on emergency department efficiency improvements that could significantly reduce patient wait times at ${session.businessName || 'your facility'}. Could you connect me with your ER director?`;
+    } else {
+      // Generic but still natural
+      introduction = "I'm Alex from Business Solutions Group.";
+      const service = this.extractService(session.goal);
+      fullRequest = `${response} ${introduction} We have an opportunity that could really benefit ${session.businessName || 'your organization'}. I'd like to speak with someone about ${service}. Could you help me reach the right person?`;
+    }
 
     session.hasAskedQuestion = true;
     session.questionAsked = fullRequest;
@@ -418,7 +457,7 @@ export class HumanConversationService {
       priority: 'high',
     });
 
-    this.logger.log(`✅ Responded to human for call ${session.callSid}: "${fullRequest}"`);
+    this.logger.log(`✅ Responded to human for call ${session.callSid}`);
   }
 
   private askSimpleQuestion(session: SimpleHumanSession): void {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Phone, PhoneCall, Headphones, Bot, Users } from 'lucide-react';
 import { telephonyApi, scraperApi, conversationApi } from '@/lib/api';
 import { Business, TranscriptEntry, IVRDecision } from '@/types';
@@ -121,7 +121,7 @@ export default function CallingPage() {
   };
 
   // Auto-retry logic
-  const retryCall = (originalCall: CallCard) => {
+  const retryCall = useCallback((originalCall: CallCard) => {
     if (originalCall.business && originalCall.originalGoal) {
       const phoneNumber = getPhoneForCall(originalCall.business.phoneNumber);
       if (phoneNumber && (originalCall.retryCount || 0) < maxRetries) {
@@ -154,13 +154,12 @@ export default function CallingPage() {
         });
       }
     }
-  };
+  }, [initiateCallMutation, maxRetries]);
 
   // Check for goal achievement (simple heuristic based on transcript content)
-  const checkGoalAchievement = (call: CallCard, transcripts: any[]): boolean => {
+  const checkGoalAchievement = (call: CallCard, transcripts: TranscriptEntry[]): boolean => {
     if (!call.originalGoal) return false;
     
-    const goalLower = call.originalGoal.toLowerCase();
     const transcriptText = transcripts.map(t => t.text).join(' ').toLowerCase();
     
     // Simple goal achievement detection
@@ -202,7 +201,7 @@ export default function CallingPage() {
         }
       }
     });
-  }, [activeCalls, autoRetry, maxRetries]);
+  }, [activeCalls, autoRetry, maxRetries, retryCall]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">

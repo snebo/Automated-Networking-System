@@ -11,13 +11,10 @@ const common_1 = require("@nestjs/common");
 const bull_1 = require("@nestjs/bull");
 const call_manager_service_1 = require("./call-manager.service");
 const call_processor_1 = require("./call.processor");
-const verification_workflow_service_1 = require("./verification-workflow.service");
 const call_progress_service_1 = require("./call-progress.service");
 const call_progress_gateway_1 = require("./call-progress.gateway");
 const call_progress_controller_1 = require("./call-progress.controller");
 const telephony_module_1 = require("../telephony/telephony.module");
-const information_extraction_module_1 = require("../information-extraction/information-extraction.module");
-const script_manager_module_1 = require("../script-manager/script-manager.module");
 const database_module_1 = require("../database/database.module");
 let CallManagerModule = class CallManagerModule {
 };
@@ -28,17 +25,12 @@ exports.CallManagerModule = CallManagerModule = __decorate([
             bull_1.BullModule.registerQueue({
                 name: 'call-queue',
             }),
-            bull_1.BullModule.registerQueue({
-                name: 'verification-queue',
-            }),
             database_module_1.DatabaseModule,
             telephony_module_1.TelephonyModule,
-            information_extraction_module_1.InformationExtractionModule,
-            script_manager_module_1.ScriptManagerModule,
         ],
         controllers: [call_progress_controller_1.CallProgressController],
-        providers: [call_manager_service_1.CallManagerService, call_processor_1.CallProcessor, verification_workflow_service_1.VerificationWorkflowService, call_progress_service_1.CallProgressService, call_progress_gateway_1.CallProgressGateway],
-        exports: [call_manager_service_1.CallManagerService, verification_workflow_service_1.VerificationWorkflowService, call_progress_service_1.CallProgressService, call_progress_gateway_1.CallProgressGateway],
+        providers: [call_manager_service_1.CallManagerService, call_processor_1.CallProcessor, call_progress_service_1.CallProgressService, call_progress_gateway_1.CallProgressGateway],
+        exports: [call_manager_service_1.CallManagerService, call_progress_service_1.CallProgressService, call_progress_gateway_1.CallProgressGateway],
     })
 ], CallManagerModule);
 //# sourceMappingURL=call-manager.module.js.map

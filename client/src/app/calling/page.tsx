@@ -386,6 +386,11 @@ export default function CallingPage() {
                           startTime={call.startTime}
                           expanded={call.expanded}
                           onToggleExpanded={() => toggleCallExpanded(call.callSid)}
+                          onStatusChange={(newStatus: string) => {
+                            setActiveCalls(prev => prev.map(c => 
+                              c.callSid === call.callSid ? { ...c, status: newStatus as 'queued' | 'ringing' | 'in-progress' | 'completed' | 'failed' | 'no-answer' | 'busy' } : c
+                            ));
+                          }}
                         />
                       ))}
                     </div>

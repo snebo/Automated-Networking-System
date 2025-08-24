@@ -103,6 +103,17 @@ export class DecisionEngineService {
       return;
     }
     
+    // Check if we should terminate the call based on the IVR message
+    if (this.shouldTerminateCall(event.fullText)) {
+      this.logger.log(`Terminating call ${event.callSid} - Business closed or no viable options`);
+      this.eventEmitter.emit('ai.hangup', {
+        callSid: event.callSid,
+        reason: 'Business closed or no viable navigation path'
+      });
+      this.activeSessions.delete(event.callSid);
+      return;
+    }
+    
     session.currentState = 'deciding';
 
     try {
@@ -174,6 +185,41 @@ export class DecisionEngineService {
     }
 
     this.activeSessions.delete(callSid);
+  }
+
+  private shouldTerminateCall(fullText: string): boolean {
+    const text = fullText.toLowerCase();
+    
+    // Indicators that business is closed
+    const closedIndicators = [
+      'we are closed',
+      'we are currently closed',
+      'business hours',
+      'after hours',
+      'closed now',
+      'closed today',
+      'closed for the',
+      'office is closed',
+      'not open',
+      'closed on',
+      'closed until',
+      'holiday',
+      'no longer in service',
+      'disconnected',
+      'not in service',
+      'number cannot be completed'
+    ];
+    
+    // Check if any closed indicators are present
+    const isClosed = closedIndicators.some(indicator => text.includes(indicator));
+    
+    // Check if there's no menu options (just a message)
+    const hasNoOptions = !text.includes('press') && 
+                        !text.includes('dial') && 
+                        !text.includes('say') &&
+                        text.length > 50; // Long message with no options
+    
+    return isClosed || (hasNoOptions && text.includes('goodbye'));
   }
 
   private async generateCallSummary(session: CallSession): Promise<string> {

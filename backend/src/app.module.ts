@@ -8,9 +8,7 @@ import { WebScraperModule } from './modules/web-scraper/web-scraper.module';
 import { CallManagerModule } from './modules/call-manager/call-manager.module';
 import { SpeechProcessorModule } from './modules/speech-processor/speech-processor.module';
 import { ConversationEngineModule } from './modules/conversation-engine/conversation-engine.module';
-import { InformationExtractionModule } from './modules/information-extraction/information-extraction.module';
 import { IvrNavigatorModule } from './modules/ivr-navigator/ivr-navigator.module';
-import { ScriptManagerModule } from './modules/script-manager/script-manager.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -36,7 +34,6 @@ import configuration from './config/configuration';
     
     // Feature 1: Business Discovery & Data Collection
     WebScraperModule,
-    ScriptManagerModule,
     
     // Feature 2: Call Management & Speech Processing  
     CallManagerModule,
@@ -45,9 +42,6 @@ import configuration from './config/configuration';
     // Feature 3: AI Navigation & Conversation
     IvrNavigatorModule,
     ConversationEngineModule,
-    
-    // Feature 4: Information Extraction & Storage
-    InformationExtractionModule,
   ],
 })
 export class AppModule {}

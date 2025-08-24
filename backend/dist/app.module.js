@@ -17,9 +17,7 @@ const web_scraper_module_1 = require("./modules/web-scraper/web-scraper.module")
 const call_manager_module_1 = require("./modules/call-manager/call-manager.module");
 const speech_processor_module_1 = require("./modules/speech-processor/speech-processor.module");
 const conversation_engine_module_1 = require("./modules/conversation-engine/conversation-engine.module");
-const information_extraction_module_1 = require("./modules/information-extraction/information-extraction.module");
 const ivr_navigator_module_1 = require("./modules/ivr-navigator/ivr-navigator.module");
-const script_manager_module_1 = require("./modules/script-manager/script-manager.module");
 const configuration_1 = require("./config/configuration");
 let AppModule = class AppModule {
 };
@@ -45,12 +43,10 @@ exports.AppModule = AppModule = __decorate([
             database_module_1.DatabaseModule,
             telephony_module_1.TelephonyModule,
             web_scraper_module_1.WebScraperModule,
-            script_manager_module_1.ScriptManagerModule,
             call_manager_module_1.CallManagerModule,
             speech_processor_module_1.SpeechProcessorModule,
             ivr_navigator_module_1.IvrNavigatorModule,
             conversation_engine_module_1.ConversationEngineModule,
-            information_extraction_module_1.InformationExtractionModule,
         ],
     })
 ], AppModule);

@@ -2,10 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
-import { ScriptManagerService } from '../script-manager/script-manager.service';
 import { TelephonyService } from '../telephony/telephony.service';
 import { CallManagerService } from '../call-manager/call-manager.service';
-import { InformationExtractionService } from '../information-extraction/information-extraction.service';
 import { UnifiedWorkflowDto, WorkflowExecutionResponse } from './dto/unified-workflow.dto';
 import * as cheerio from 'cheerio';
 import { firstValueFrom } from 'rxjs';
@@ -28,10 +26,8 @@ export class WebScraperService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-    private readonly scriptManager: ScriptManagerService,
     private readonly telephonyService: TelephonyService,
     private readonly callManager: CallManagerService,
-    private readonly informationExtraction: InformationExtractionService,
   ) {}
 
   async scrapeBusinesses(query: ScraperQuery): Promise<ScrapeResult> {
@@ -838,47 +834,27 @@ export class WebScraperService {
           businessName: savedBusiness.name
         };
 
-        // Generate tailored script
-        const generatedScript = await this.scriptManager.generateScript(scriptRequest);
-        
-        // Save script to database
-        const savedScript = await this.prisma.script.create({
-          data: {
-            name: generatedScript.name,
-            description: generatedScript.description,
-            goal: generatedScript.goal,
-            context: generatedScript.context,
-            phases: generatedScript.phases as any, // JSON field
-            adaptationRules: generatedScript.adaptationRules as any, // JSON field
-            isActive: true
-          }
-        });
+        // Script generation removed - IVR now operates dynamically based on goals
+        // Update business with custom goal if provided
+        if (query.specificGoal) {
+          await this.prisma.business.update({
+            where: { id: savedBusiness.id },
+            data: {
+              customGoal: query.specificGoal
+            }
+          });
+        }
 
-        // Update business with assigned script
-        await this.prisma.business.update({
-          where: { id: savedBusiness.id },
-          data: {
-            assignedScriptId: savedScript.id,
-            customGoal: query.specificGoal
-          }
-        });
-
-        // Combine saved business data with scraped data and script info
+        // Combine saved business data with scraped data
         businessesWithScripts.push({
           ...scrapedBusiness,
           id: savedBusiness.id, // Add the database ID
-          assignedScript: {
-            id: savedScript.id,
-            name: savedScript.name,
-            goal: savedScript.goal,
-            targetPerson: generatedScript.targetPerson
-          },
+          assignedScript: null, // Scripts removed - dynamic IVR navigation
           workflowEnabled: true,
-          readyForCalling: !!(savedBusiness.phoneNumber && savedScript.id)
+          readyForCalling: !!savedBusiness.phoneNumber
         });
 
-        scriptsGenerated++;
-        this.logger.log(`Generated script "${savedScript.name}" for ${savedBusiness.name}`);
+        this.logger.log(`Business ready for calling: ${savedBusiness.name}`);
         
       } catch (error) {
         this.logger.warn(`Failed to generate script for ${savedBusiness.name}: ${error.message}`);

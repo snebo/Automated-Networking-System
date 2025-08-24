@@ -77,6 +77,15 @@ let DecisionEngineService = DecisionEngineService_1 = class DecisionEngineServic
         if (session.currentState === 'waiting') {
             return;
         }
+        if (this.shouldTerminateCall(event.fullText)) {
+            this.logger.log(`Terminating call ${event.callSid} - Business closed or no viable options`);
+            this.eventEmitter.emit('ai.hangup', {
+                callSid: event.callSid,
+                reason: 'Business closed or no viable navigation path'
+            });
+            this.activeSessions.delete(event.callSid);
+            return;
+        }
         session.currentState = 'deciding';
         try {
             const context = {
@@ -136,6 +145,33 @@ let DecisionEngineService = DecisionEngineService_1 = class DecisionEngineServic
             }
         }
         this.activeSessions.delete(callSid);
+    }
+    shouldTerminateCall(fullText) {
+        const text = fullText.toLowerCase();
+        const closedIndicators = [
+            'we are closed',
+            'we are currently closed',
+            'business hours',
+            'after hours',
+            'closed now',
+            'closed today',
+            'closed for the',
+            'office is closed',
+            'not open',
+            'closed on',
+            'closed until',
+            'holiday',
+            'no longer in service',
+            'disconnected',
+            'not in service',
+            'number cannot be completed'
+        ];
+        const isClosed = closedIndicators.some(indicator => text.includes(indicator));
+        const hasNoOptions = !text.includes('press') &&
+            !text.includes('dial') &&
+            !text.includes('say') &&
+            text.length > 50;
+        return isClosed || (hasNoOptions && text.includes('goodbye'));
     }
     async generateCallSummary(session) {
         const context = {

@@ -15,22 +15,18 @@ const common_1 = require("@nestjs/common");
 const axios_1 = require("@nestjs/axios");
 const config_1 = require("@nestjs/config");
 const prisma_service_1 = require("../database/prisma.service");
-const script_manager_service_1 = require("../script-manager/script-manager.service");
 const telephony_service_1 = require("../telephony/telephony.service");
 const call_manager_service_1 = require("../call-manager/call-manager.service");
-const information_extraction_service_1 = require("../information-extraction/information-extraction.service");
 const cheerio = require("cheerio");
 const rxjs_1 = require("rxjs");
 const scraper_interface_1 = require("./interfaces/scraper.interface");
 let WebScraperService = WebScraperService_1 = class WebScraperService {
-    constructor(httpService, configService, prisma, scriptManager, telephonyService, callManager, informationExtraction) {
+    constructor(httpService, configService, prisma, telephonyService, callManager) {
         this.httpService = httpService;
         this.configService = configService;
         this.prisma = prisma;
-        this.scriptManager = scriptManager;
         this.telephonyService = telephonyService;
         this.callManager = callManager;
-        this.informationExtraction = informationExtraction;
         this.logger = new common_1.Logger(WebScraperService_1.name);
         this.requestDelays = new Map();
         this.maxRetries = 3;
@@ -704,39 +700,22 @@ let WebScraperService = WebScraperService_1 = class WebScraperService {
                     businessServices: savedBusiness.services || [],
                     businessName: savedBusiness.name
                 };
-                const generatedScript = await this.scriptManager.generateScript(scriptRequest);
-                const savedScript = await this.prisma.script.create({
-                    data: {
-                        name: generatedScript.name,
-                        description: generatedScript.description,
-                        goal: generatedScript.goal,
-                        context: generatedScript.context,
-                        phases: generatedScript.phases,
-                        adaptationRules: generatedScript.adaptationRules,
-                        isActive: true
-                    }
-                });
-                await this.prisma.business.update({
-                    where: { id: savedBusiness.id },
-                    data: {
-                        assignedScriptId: savedScript.id,
-                        customGoal: query.specificGoal
-                    }
-                });
+                if (query.specificGoal) {
+                    await this.prisma.business.update({
+                        where: { id: savedBusiness.id },
+                        data: {
+                            customGoal: query.specificGoal
+                        }
+                    });
+                }
                 businessesWithScripts.push({
                     ...scrapedBusiness,
                     id: savedBusiness.id,
-                    assignedScript: {
-                        id: savedScript.id,
-                        name: savedScript.name,
-                        goal: savedScript.goal,
-                        targetPerson: generatedScript.targetPerson
-                    },
+                    assignedScript: null,
                     workflowEnabled: true,
-                    readyForCalling: !!(savedBusiness.phoneNumber && savedScript.id)
+                    readyForCalling: !!savedBusiness.phoneNumber
                 });
-                scriptsGenerated++;
-                this.logger.log(`Generated script "${savedScript.name}" for ${savedBusiness.name}`);
+                this.logger.log(`Business ready for calling: ${savedBusiness.name}`);
             }
             catch (error) {
                 this.logger.warn(`Failed to generate script for ${savedBusiness.name}: ${error.message}`);
@@ -1426,9 +1405,7 @@ exports.WebScraperService = WebScraperService = WebScraperService_1 = __decorate
     __metadata("design:paramtypes", [axios_1.HttpService,
         config_1.ConfigService,
         prisma_service_1.PrismaService,
-        script_manager_service_1.ScriptManagerService,
         telephony_service_1.TelephonyService,
-        call_manager_service_1.CallManagerService,
-        information_extraction_service_1.InformationExtractionService])
+        call_manager_service_1.CallManagerService])
 ], WebScraperService);
 //# sourceMappingURL=web-scraper.service.js.map

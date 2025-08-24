@@ -59,15 +59,6 @@ export const useCallProgress = (callSid?: string) => {
       }
     });
 
-    // Listen for general call updates
-    newSocket.on('call-update', (event: CallProgressEvent) => {
-      console.log('Call update event:', event);
-      
-      if (!callSid || event.callSid === callSid) {
-        setProgress((prev) => [...prev, event]);
-      }
-    });
-
     setSocket(newSocket);
 
     return () => {

@@ -14,9 +14,7 @@ const web_scraper_service_1 = require("./web-scraper.service");
 const web_scraper_controller_1 = require("./web-scraper.controller");
 const database_module_1 = require("../database/database.module");
 const telephony_module_1 = require("../telephony/telephony.module");
-const script_manager_module_1 = require("../script-manager/script-manager.module");
 const call_manager_module_1 = require("../call-manager/call-manager.module");
-const information_extraction_module_1 = require("../information-extraction/information-extraction.module");
 let WebScraperModule = class WebScraperModule {
 };
 exports.WebScraperModule = WebScraperModule;
@@ -27,9 +25,7 @@ exports.WebScraperModule = WebScraperModule = __decorate([
             axios_1.HttpModule,
             database_module_1.DatabaseModule,
             telephony_module_1.TelephonyModule,
-            script_manager_module_1.ScriptManagerModule,
             call_manager_module_1.CallManagerModule,
-            information_extraction_module_1.InformationExtractionModule,
         ],
         controllers: [web_scraper_controller_1.WebScraperController],
         providers: [web_scraper_service_1.WebScraperService],

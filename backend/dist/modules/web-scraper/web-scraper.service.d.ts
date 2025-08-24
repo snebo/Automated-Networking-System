@@ -1,26 +1,22 @@
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
-import { ScriptManagerService } from '../script-manager/script-manager.service';
 import { TelephonyService } from '../telephony/telephony.service';
 import { CallManagerService } from '../call-manager/call-manager.service';
-import { InformationExtractionService } from '../information-extraction/information-extraction.service';
 import { UnifiedWorkflowDto, WorkflowExecutionResponse } from './dto/unified-workflow.dto';
 import { ScraperQuery, BusinessInfo, ScrapeResult } from './interfaces/scraper.interface';
 export declare class WebScraperService {
     private readonly httpService;
     private readonly configService;
     private readonly prisma;
-    private readonly scriptManager;
     private readonly telephonyService;
     private readonly callManager;
-    private readonly informationExtraction;
     private readonly logger;
     private readonly requestDelays;
     private readonly maxRetries;
     private readonly baseDelay;
     private workflowStatuses;
-    constructor(httpService: HttpService, configService: ConfigService, prisma: PrismaService, scriptManager: ScriptManagerService, telephonyService: TelephonyService, callManager: CallManagerService, informationExtraction: InformationExtractionService);
+    constructor(httpService: HttpService, configService: ConfigService, prisma: PrismaService, telephonyService: TelephonyService, callManager: CallManagerService);
     scrapeBusinesses(query: ScraperQuery): Promise<ScrapeResult>;
     private scrapeDuckDuckGo;
     private scrapeGoogleSearch;

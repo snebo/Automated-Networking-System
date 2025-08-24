@@ -77,9 +77,6 @@ export class CallProgressGateway implements OnGatewayConnection, OnGatewayDiscon
   handleCallProgress(event: any) {
     // Emit to all clients subscribed to this specific call
     this.server.to(`call:${event.callSid}`).emit('call-progress', event);
-    
-    // Also emit to all connected clients for general updates
-    this.server.emit('call-update', event);
   }
 
   // Broadcast to all connected clients

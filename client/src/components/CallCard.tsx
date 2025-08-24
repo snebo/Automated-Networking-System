@@ -11,6 +11,7 @@ interface CallCardProps {
   startTime: Date;
   expanded: boolean;
   onToggleExpanded: () => void;
+  onStatusChange?: (status: string) => void;
 }
 
 export default function CallCard({ 
@@ -19,12 +20,20 @@ export default function CallCard({
   initialStatus, 
   startTime, 
   expanded, 
-  onToggleExpanded 
+  onToggleExpanded,
+  onStatusChange 
 }: CallCardProps) {
   const { status, transcripts, ivrOptions, aiDecisions, connected, progress } = useCallProgress(callSid);
   
   // Use WebSocket status if available, otherwise use initial status
   const currentStatus = status || initialStatus;
+  
+  // Notify parent when status changes
+  React.useEffect(() => {
+    if (status && onStatusChange && status !== initialStatus) {
+      onStatusChange(status);
+    }
+  }, [status, onStatusChange, initialStatus]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {

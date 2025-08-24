@@ -50,6 +50,7 @@ export declare class DecisionEngineService {
         confidence: number;
     }): Promise<void>;
     handleCallCompleted(callSid: string): Promise<void>;
+    private shouldTerminateCall;
     private generateCallSummary;
     getActiveSession(callSid: string): CallSession | undefined;
     getActiveSessions(): CallSession[];

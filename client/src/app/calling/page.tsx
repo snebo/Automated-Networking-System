@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Phone, PhoneCall, Clock, CheckCircle, XCircle, ChevronDown, ChevronUp, Play, Square, Headphones, Bot, Users } from 'lucide-react';
+import { useState } from 'react';
+import { Phone, PhoneCall, Headphones, Bot, Users } from 'lucide-react';
 import { telephonyApi, scraperApi, conversationApi } from '@/lib/api';
-import { Business, CallProgress, TranscriptEntry, IVRDecision } from '@/types';
+import { Business, TranscriptEntry, IVRDecision } from '@/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatPhone, getPhoneForCall } from '@/lib/utils';
 import AnimatedSection from '@/components/AnimatedSection';
+import CallCardComponent from '@/components/CallCard';
 
 interface CallCard {
   callSid: string;
@@ -31,16 +32,10 @@ export default function CallingPage() {
     queryFn: scraperApi.getScrapedBusinesses,
   });
 
-  const { data: callsData = [], isLoading: callsLoading } = useQuery({
-    queryKey: ['calls'],
-    queryFn: telephonyApi.getCalls,
-    refetchInterval: 2000,
-  });
-
   const initiateCallMutation = useMutation({
     mutationFn: ({ phoneNumber, scriptId, goal, companyName }: { phoneNumber: string; scriptId?: string; goal?: string; companyName?: string }) =>
       telephonyApi.initiateCall(phoneNumber, scriptId, goal, companyName),
-    onSuccess: (data, variables) => {
+    onSuccess: (data) => {
       if (selectedBusiness) {
         const newCall: CallCard = {
           callSid: data.callSid,
@@ -58,8 +53,8 @@ export default function CallingPage() {
   });
 
   const testHumanConversationMutation = useMutation({
-    mutationFn: ({ phoneNumber, script, goal }: { phoneNumber: string; script: string; goal: string }) =>
-      conversationApi.testHumanConversation(phoneNumber, script, goal),
+    mutationFn: ({ phoneNumber, goal }: { phoneNumber: string; script: string; goal: string }) =>
+      conversationApi.testHumanConversation(phoneNumber, '', goal),
     onSuccess: (data) => {
       if (selectedBusiness) {
         const newCall: CallCard = {
@@ -92,7 +87,7 @@ export default function CallingPage() {
   };
 
   const handleTestConversation = () => {
-    if (selectedBusiness && selectedBusiness.phoneNumber && script && goal) {
+    if (selectedBusiness && selectedBusiness.phoneNumber && goal) {
       const phoneNumber = getPhoneForCall(selectedBusiness.phoneNumber);
       if (phoneNumber) {
         testHumanConversationMutation.mutate({ phoneNumber, script, goal });
@@ -104,44 +99,6 @@ export default function CallingPage() {
     setActiveCalls(prev => prev.map(call => 
       call.callSid === callSid ? { ...call, expanded: !call.expanded } : call
     ));
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'queued':
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'ringing':
-        return <Phone className="h-4 w-4 text-blue-500 animate-pulse" />;
-      case 'in-progress':
-        return <PhoneCall className="h-4 w-4 text-green-500" />;
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case 'failed':
-      case 'no-answer':
-      case 'busy':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-400" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'queued':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'ringing':
-        return 'bg-blue-100 text-blue-800';
-      case 'in-progress':
-        return 'bg-green-100 text-green-800';
-      case 'completed':
-        return 'bg-emerald-100 text-emerald-800';
-      case 'failed':
-      case 'no-answer':
-      case 'busy':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
   };
 
   return (
@@ -292,76 +249,15 @@ export default function CallingPage() {
                   ) : (
                     <div className="space-y-4">
                       {activeCalls.map((call) => (
-                        <div key={call.callSid} className="border border-gray-200 rounded-xl overflow-hidden">
-                          <div 
-                            className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
-                            onClick={() => toggleCallExpanded(call.callSid)}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-4">
-                                {getStatusIcon(call.status)}
-                                <div>
-                                  <div className="font-semibold text-gray-900">{call.business.name}</div>
-                                  <div className="text-sm text-gray-600">{formatPhone(call.business.phoneNumber)}</div>
-                                </div>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(call.status)}`}>
-                                  {call.status}
-                                </span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-sm text-gray-500">
-                                  {new Date(call.startTime).toLocaleTimeString()}
-                                </span>
-                                {call.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {call.expanded && (
-                            <div className="p-4 border-t border-gray-200 bg-white">
-                              <div className="grid md:grid-cols-2 gap-4">
-                                {/* Transcript */}
-                                <div>
-                                  <h4 className="font-semibold text-gray-900 mb-3">Conversation Transcript</h4>
-                                  <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
-                                    {call.transcript.length === 0 ? (
-                                      <p className="text-gray-500 text-sm italic">No transcript available yet...</p>
-                                    ) : (
-                                      <div className="space-y-2">
-                                        {call.transcript.map((entry, index) => (
-                                          <div key={index} className={`p-2 rounded text-sm ${
-                                            entry.speaker === 'agent' ? 'bg-blue-100 text-blue-900' : 'bg-green-100 text-green-900'
-                                          }`}>
-                                            <span className="font-semibold">{entry.speaker === 'agent' ? 'AI' : 'Human'}:</span> {entry.text}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                {/* IVR Decisions */}
-                                <div>
-                                  <h4 className="font-semibold text-gray-900 mb-3">IVR Navigation</h4>
-                                  <div className="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
-                                    {call.ivrDecisions.length === 0 ? (
-                                      <p className="text-gray-500 text-sm italic">No IVR decisions yet...</p>
-                                    ) : (
-                                      <div className="space-y-2">
-                                        {call.ivrDecisions.map((decision, index) => (
-                                          <div key={index} className="bg-purple-100 text-purple-900 p-2 rounded text-sm">
-                                            <div className="font-semibold">{decision.prompt}</div>
-                                            <div>Selected: {decision.selectedOption}</div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <CallCardComponent
+                          key={call.callSid}
+                          callSid={call.callSid}
+                          business={call.business}
+                          initialStatus={call.status}
+                          startTime={call.startTime}
+                          expanded={call.expanded}
+                          onToggleExpanded={() => toggleCallExpanded(call.callSid)}
+                        />
                       ))}
                     </div>
                   )}

@@ -38,8 +38,8 @@ export default function CallingPage() {
   });
 
   const initiateCallMutation = useMutation({
-    mutationFn: ({ phoneNumber, scriptId }: { phoneNumber: string; scriptId?: string }) =>
-      telephonyApi.initiateCall(phoneNumber, scriptId),
+    mutationFn: ({ phoneNumber, scriptId, goal, companyName }: { phoneNumber: string; scriptId?: string; goal?: string; companyName?: string }) =>
+      telephonyApi.initiateCall(phoneNumber, scriptId, goal, companyName),
     onSuccess: (data, variables) => {
       if (selectedBusiness) {
         const newCall: CallCard = {
@@ -81,7 +81,12 @@ export default function CallingPage() {
     if (selectedBusiness && selectedBusiness.phoneNumber) {
       const phoneNumber = getPhoneForCall(selectedBusiness.phoneNumber);
       if (phoneNumber) {
-        initiateCallMutation.mutate({ phoneNumber });
+        initiateCallMutation.mutate({ 
+          phoneNumber,
+          scriptId: undefined,
+          goal: goal || undefined,
+          companyName: selectedBusiness.name
+        });
       }
     }
   };

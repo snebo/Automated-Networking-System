@@ -81,8 +81,13 @@ export const scraperApi = {
 };
 
 export const telephonyApi = {
-  initiateCall: async (phoneNumber: string, scriptId?: string) => {
-    const response = await api.post('/telephony/call', { phoneNumber, scriptId });
+  initiateCall: async (phoneNumber: string, scriptId?: string, goal?: string, companyName?: string) => {
+    const response = await api.post('/telephony/call', { 
+      phoneNumber, 
+      scriptId: scriptId || undefined,
+      goal: goal || undefined,
+      companyName: companyName || undefined
+    });
     return response.data;
   },
   

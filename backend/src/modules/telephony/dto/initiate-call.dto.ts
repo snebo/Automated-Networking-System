@@ -14,11 +14,11 @@ export class InitiateCallDto {
   @ApiProperty({
     description: 'The ID of the script to use for this call',
     example: 'script-123e4567-e89b-12d3-a456-426614174000',
-    required: true,
+    required: false,
   })
   @IsString()
-  @IsNotEmpty()
-  scriptId: string;
+  @IsOptional()
+  scriptId?: string;
 
   @ApiProperty({
     description: 'The goal for this call - what the AI should try to achieve',

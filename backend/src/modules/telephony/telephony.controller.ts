@@ -22,6 +22,7 @@ import { TelephonyService } from './telephony.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InitiateCallDto } from './dto/initiate-call.dto';
 import { SendDTMFDto } from './dto/send-dtmf.dto';
+import { PrismaService } from '../database/prisma.service';
 
 @ApiTags('telephony')
 @Controller('telephony')
@@ -33,6 +34,7 @@ export class TelephonyController {
   constructor(
     private readonly telephonyService: TelephonyService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly prisma: PrismaService,
   ) {
     // Listen for waiting state changes
     this.eventEmitter.on('ai.entering_wait_state', (event: { callSid: string }) => {
@@ -127,6 +129,130 @@ export class TelephonyController {
   @ApiResponse({ status: 404, description: 'Call not found' })
   async getCallStatus(@Param('callSid') callSid: string) {
     return this.telephonyService.getActiveCall(callSid);
+  }
+
+  @Get('called-businesses')
+  @ApiOperation({ summary: 'Get businesses that have been called with call history' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'List of called businesses with their call status and extracted information',
+    isArray: true,
+  })
+  async getCalledBusinesses() {
+    this.logger.log('Fetching called businesses with call history');
+    
+    // Get businesses that have been called (have call sessions)
+    const businesses = await this.prisma.business.findMany({
+      where: {
+        callStatus: {
+          in: ['completed', 'failed', 'no-answer', 'busy']
+        }
+      },
+      include: {
+        extractedInformation: {
+          include: {
+            call: {
+              select: {
+                callSid: true,
+                status: true,
+                startTime: true,
+                endTime: true,
+                duration: true,
+                outcome: true
+              }
+            }
+          },
+          orderBy: {
+            extractedAt: 'desc'
+          },
+          take: 1 // Get the latest extraction per business
+        }
+      },
+      orderBy: {
+        lastCalled: 'desc'
+      }
+    });
+
+    // Transform the data to match the frontend CalledBusiness interface
+    const calledBusinesses = businesses.map(business => {
+      const latestExtraction = business.extractedInformation[0];
+      
+      // Extract contacts from the contactInfo JSON
+      const contacts = latestExtraction?.contactInfo ? 
+        this.extractContactsFromJson(latestExtraction.contactInfo) : [];
+
+      return {
+        id: business.id,
+        name: business.name,
+        phone: business.phoneNumber,
+        category: business.industry,
+        address: business.addressFormatted || this.buildAddress(business),
+        callStatus: this.mapCallStatus(business.callStatus),
+        callDate: business.lastCalled || business.createdAt,
+        callDuration: latestExtraction?.call?.duration,
+        verifiedPhone: business.phoneNumber || '',
+        contacts: contacts,
+        notes: latestExtraction ? `Extraction confidence: ${latestExtraction.extractionConfidence}` : undefined
+      };
+    });
+
+    this.logger.log(`Found ${calledBusinesses.length} called businesses`);
+    return calledBusinesses;
+  }
+
+  private extractContactsFromJson(contactInfo: any): any[] {
+    // Extract contacts from the contactInfo JSON structure
+    const contacts = [];
+    
+    if (contactInfo.primaryContact) {
+      contacts.push({
+        name: contactInfo.primaryContact.name || 'Primary Contact',
+        profession: contactInfo.primaryContact.position || 'Unknown',
+        phone: contactInfo.primaryContact.phone,
+        extension: contactInfo.primaryContact.extension,
+        directPhone: contactInfo.primaryContact.directPhone,
+        email: contactInfo.primaryContact.email
+      });
+    }
+
+    if (contactInfo.alternativeContacts && Array.isArray(contactInfo.alternativeContacts)) {
+      contactInfo.alternativeContacts.forEach((contact: any) => {
+        contacts.push({
+          name: contact.name || 'Alternative Contact',
+          profession: contact.position || 'Unknown',
+          phone: contact.phone,
+          extension: contact.extension,
+          directPhone: contact.directPhone,
+          email: contact.email
+        });
+      });
+    }
+
+    return contacts;
+  }
+
+  private buildAddress(business: any): string | undefined {
+    const parts = [
+      business.addressStreet,
+      business.addressCity,
+      business.addressState,
+      business.addressZip
+    ].filter(Boolean);
+    
+    return parts.length > 0 ? parts.join(', ') : undefined;
+  }
+
+  private mapCallStatus(status: string): 'completed' | 'failed' | 'no-answer' | 'busy' {
+    const statusMap: Record<string, 'completed' | 'failed' | 'no-answer' | 'busy'> = {
+      'completed': 'completed',
+      'failed': 'failed',
+      'no-answer': 'no-answer',
+      'busy': 'busy',
+      'pending': 'failed', // Default pending to failed for display
+      'calling': 'failed'  // Default calling to failed for display
+    };
+    
+    return statusMap[status] || 'failed';
   }
 
   // ===== PHASE 2: WEBHOOK AND MEDIA STREAM HANDLERS =====

@@ -110,6 +110,16 @@ export const telephonyApi = {
     const response = await api.get('/telephony/called-businesses');
     return response.data;
   },
+
+  initiateManualCall: async (businessName: string, phoneNumber: string, goal: string, scriptId?: string) => {
+    const response = await api.post('/telephony/call/manual', {
+      businessName,
+      phoneNumber,
+      goal,
+      scriptId
+    });
+    return response.data;
+  },
 };
 
 export const informationApi = {

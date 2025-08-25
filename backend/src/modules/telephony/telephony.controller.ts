@@ -22,6 +22,7 @@ import { TelephonyService } from './telephony.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InitiateCallDto } from './dto/initiate-call.dto';
 import { SendDTMFDto } from './dto/send-dtmf.dto';
+import { ManualCallDto } from './dto/manual-call.dto';
 import { PrismaService } from '../database/prisma.service';
 
 @ApiTags('telephony')
@@ -78,6 +79,77 @@ export class TelephonyController {
       dto.companyName,
     );
     return { callSid };
+  }
+
+  @Post('call/manual')
+  @ApiOperation({ 
+    summary: 'Initiate a manual call to a business not in database',
+    description: 'Allows calling any business by manually entering details without requiring it to be in the database'
+  })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Manual call initiated successfully',
+    schema: {
+      properties: {
+        callSid: { type: 'string', example: 'CA1234567890abcdef1234567890abcdef' },
+        businessId: { type: 'string', example: 'temp_123456', description: 'Temporary business ID created for this call' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input data' })
+  @ApiResponse({ status: 500, description: 'Call initiation failed' })
+  async initiateManualCall(@Body() dto: ManualCallDto) {
+    this.logger.log(`Manual call requested: ${dto.businessName} at ${dto.phoneNumber}`);
+    
+    try {
+      // Create a temporary business record for tracking
+      const tempBusiness = await this.prisma.business.create({
+        data: {
+          name: dto.businessName,
+          phoneNumber: dto.phoneNumber,
+          industry: 'Manual Entry',
+          source: 'manual',
+          confidence: 1.0,
+          callStatus: 'calling',
+          metadata: {
+            isManualEntry: true,
+            enteredAt: new Date(),
+            goal: dto.goal
+          }
+        }
+      });
+
+      this.logger.log(`Created temporary business record: ${tempBusiness.id}`);
+
+      // Initiate the call
+      const callSid = await this.telephonyService.initiateCall(
+        dto.phoneNumber,
+        dto.scriptId,
+        dto.goal,
+        dto.businessName,
+      );
+
+      // Update the business with the call information
+      await this.prisma.business.update({
+        where: { id: tempBusiness.id },
+        data: {
+          lastCalled: new Date(),
+          callCount: 1,
+          metadata: {
+            ...(tempBusiness.metadata as any),
+            lastCallSid: callSid
+          }
+        }
+      });
+
+      return { 
+        callSid,
+        businessId: tempBusiness.id 
+      };
+    } catch (error) {
+      this.logger.error(`Failed to initiate manual call: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   @Delete('call/:callSid')
@@ -463,8 +535,17 @@ export class TelephonyController {
   async handleGatherCallback(@Body() body: any) {
     this.logger.log('Gather callback received:', body);
     
-    const { CallSid, Digits, SpeechResult } = body;
+    const { CallSid, Digits, SpeechResult, CallStatus } = body;
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    
+    // Check if call has ended
+    if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'busy' || CallStatus === 'no-answer') {
+      this.logger.log(`Call ${CallSid} has ended with status: ${CallStatus}. Returning empty response.`);
+      // Return empty TwiML as the call has ended
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+</Response>`;
+    }
     
     if (Digits) {
       // User pressed a key - handle it

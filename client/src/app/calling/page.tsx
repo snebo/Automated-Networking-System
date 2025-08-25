@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatPhone, getPhoneForCall } from '@/lib/utils';
 import AnimatedSection from '@/components/AnimatedSection';
 import CallCardComponent from '@/components/CallCard';
+import { ManualCallForm } from '@/components/ManualCallForm';
 
 interface CallCard {
   callSid: string;
@@ -343,6 +344,13 @@ export default function CallingPage() {
                     </div>
                   </AnimatedSection>
                 )}
+              </div>
+            </AnimatedSection>
+
+            {/* Manual Call Form */}
+            <AnimatedSection animation="fadeInLeft" delay={200}>
+              <div className="mt-6">
+                <ManualCallForm />
               </div>
             </AnimatedSection>
           </div>

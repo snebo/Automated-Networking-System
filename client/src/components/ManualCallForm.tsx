@@ -3,19 +3,22 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { telephonyApi } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Phone, Building2, Target, AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { toast } from 'sonner';
 
 export function ManualCallForm() {
   const [businessName, setBusinessName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [goal, setGoal] = useState('');
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
+
+  const showMessage = (text: string, type: 'success' | 'error') => {
+    setMessage(text);
+    setMessageType(type);
+    setTimeout(() => {
+      setMessage('');
+      setMessageType('');
+    }, 5000);
+  };
 
   const { mutate: makeManualCall, isPending } = useMutation({
     mutationFn: async () => {
@@ -31,14 +34,14 @@ export function ManualCallForm() {
       return telephonyApi.initiateManualCall(businessName, formattedPhone, goal);
     },
     onSuccess: (data) => {
-      toast.success(`Call initiated! Call ID: ${data.callSid.slice(-8)}`);
+      showMessage(`Call initiated! Call ID: ${data.callSid.slice(-8)}`, 'success');
       // Clear form
       setBusinessName('');
       setPhoneNumber('');
       setGoal('');
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Failed to initiate call');
+    onError: (error: Error) => {
+      showMessage(error.message || 'Failed to initiate call', 'error');
     },
   });
 
@@ -46,7 +49,7 @@ export function ManualCallForm() {
     e.preventDefault();
     
     if (!businessName.trim() || !phoneNumber.trim() || !goal.trim()) {
-      toast.error('Please fill in all required fields');
+      showMessage('Please fill in all required fields', 'error');
       return;
     }
 
@@ -54,79 +57,91 @@ export function ManualCallForm() {
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Phone className="h-5 w-5" />
-          Manual Call
-        </CardTitle>
-        <CardDescription>
+    <div className="w-full bg-white border border-gray-200 rounded-lg shadow-sm">
+      <div className="p-6 border-b border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          📞 Manual Call
+        </h3>
+        <p className="text-sm text-gray-600 mt-1">
           Call a business not in the database by entering details manually
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div className="p-6">
+        {message && (
+          <div className={`mb-4 p-3 rounded-md ${
+            messageType === 'success' 
+              ? 'bg-green-50 border border-green-200 text-green-800' 
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}>
+            {message}
+          </div>
+        )}
+        
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="businessName" className="flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Business Name *
-            </Label>
-            <Input
+            <label htmlFor="businessName" className="block text-sm font-medium text-gray-700">
+              🏢 Business Name *
+            </label>
+            <input
               id="businessName"
+              type="text"
               placeholder="e.g., Acme Corporation"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
               disabled={isPending}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phoneNumber" className="flex items-center gap-2">
-              <Phone className="h-4 w-4" />
-              Phone Number *
-            </Label>
-            <Input
+            <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700">
+              📞 Phone Number *
+            </label>
+            <input
               id="phoneNumber"
               type="tel"
               placeholder="e.g., (555) 123-4567"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               disabled={isPending}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="goal" className="flex items-center gap-2">
-              <Target className="h-4 w-4" />
-              Call Goal *
-            </Label>
-            <Textarea
+            <label htmlFor="goal" className="block text-sm font-medium text-gray-700">
+              🎯 Call Goal *
+            </label>
+            <textarea
               id="goal"
               placeholder="e.g., Get the contact information of the HR manager"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               disabled={isPending}
               rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
             />
           </div>
 
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              This will create a temporary business record and initiate a call immediately.
-              The call will be tracked in the workflow history.
-            </AlertDescription>
-          </Alert>
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+            <div className="flex items-start">
+              <div className="text-blue-600 mr-2">ℹ️</div>
+              <p className="text-sm text-blue-800">
+                This will create a temporary business record and initiate a call immediately.
+                The call will be tracked in the workflow history.
+              </p>
+            </div>
+          </div>
 
-          <Button 
+          <button 
             type="submit" 
             disabled={isPending || !businessName.trim() || !phoneNumber.trim() || !goal.trim()}
-            className="w-full"
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
             {isPending ? 'Initiating Call...' : 'Start Call'}
-          </Button>
+          </button>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

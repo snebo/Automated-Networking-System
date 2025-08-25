@@ -324,7 +324,7 @@ export class TelephonyController {
     // Currently active - receives call status updates for monitoring
     this.logger.log('Call status update:', body);
     
-    const { CallSid, CallStatus, Duration, CallDuration } = body;
+    const { CallSid, CallStatus, Duration, CallDuration, To } = body;
     
     // Make call ending VERY noticeable
     if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'busy' || CallStatus === 'no-answer') {
@@ -334,6 +334,64 @@ export class TelephonyController {
       if (actualDuration) console.log(`⏰ Duration: ${actualDuration} seconds`);
       console.log('🔴'.repeat(80));
       console.log('');
+      
+      // Update business record in database when call ends
+      try {
+        // Find the business by phone number
+        const phoneNumber = To?.replace(/^\+1/, ''); // Remove +1 prefix if present
+        if (phoneNumber) {
+          const business = await this.prisma.business.findFirst({
+            where: { 
+              OR: [
+                { phoneNumber: phoneNumber },
+                { phoneNumber: `+1${phoneNumber}` },
+                { phoneNumber: To }
+              ]
+            }
+          });
+          
+          if (business) {
+            await this.prisma.business.update({
+              where: { id: business.id },
+              data: {
+                callStatus: CallStatus === 'completed' ? 'completed' : 
+                           CallStatus === 'no-answer' ? 'no-answer' :
+                           CallStatus === 'busy' ? 'busy' : 'failed',
+                lastCalled: new Date(),
+                callCount: business.callCount + 1,
+                callOutcomes: {
+                  ...(business.callOutcomes as any || {}),
+                  [CallSid]: {
+                    status: CallStatus,
+                    duration: actualDuration || 0,
+                    timestamp: new Date()
+                  }
+                }
+              }
+            });
+            this.logger.log(`✅ Updated business ${business.name} call status to ${CallStatus}`);
+          }
+        }
+        
+        // Also update CallSession if it exists
+        const callSession = await this.prisma.callSession.findUnique({
+          where: { callSid: CallSid }
+        });
+        
+        if (callSession) {
+          await this.prisma.callSession.update({
+            where: { callSid: CallSid },
+            data: {
+              status: CallStatus,
+              endTime: new Date(),
+              duration: actualDuration ? parseInt(actualDuration) : 0
+            }
+          });
+          this.logger.log(`✅ Updated CallSession ${CallSid} status to ${CallStatus}`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to update database for ended call: ${error.message}`, error.stack);
+      }
     }
     
     // Update call status in active calls
